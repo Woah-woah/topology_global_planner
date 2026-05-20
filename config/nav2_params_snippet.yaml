@@ -1,0 +1,37 @@
+# Merge this snippet into your nav2 params file under planner_server.  Do not add
+# InnerPlanner to planner_plugins; TopoPlanner loads InnerPlanner internally.
+
+planner_server:
+  ros__parameters:
+    planner_plugins: ["TopoPlanner"]
+
+    TopoPlanner:
+      plugin: "topology_global_planner::TopologyGlobalPlanner"
+      topology_yaml: "/home/hexinyi/origin_nav2026_developing-jazzy/src/navigation/topology_global_planner/config/topology.yaml"
+      use_topology: true
+      fallback_to_inner_planner: true
+      allow_nearest_region_fallback: false
+      region_boundary_tolerance: 0.03
+      transform_tolerance: 0.1
+      duplicate_pose_tolerance: 0.02
+      max_nearest_region_distance: 1.0   # only used when allow_nearest_region_fallback=true
+      portal_sample_count: 5             # coarse samples per portal line
+      portal_adaptive_sampling: true      # coarse-to-fine local refinement around the best coarse sample
+      portal_refine_sample_count: 5       # local refined samples; 5 is usually enough
+
+      # Region constraint for each segmented inner-planner path.
+      # Example route R3 -> R5 -> R4: the C35 -> C54 segment must stay inside R5.
+      enforce_region_constraint: true
+      region_constraint_tolerance: 0.15   # meters; allow small boundary/portal tolerance
+
+      # Inner planner = your original global planner.
+      # If your original planner was SmacPlanner2D, change this to:
+      #   nav2_smac_planner::SmacPlanner2D
+      inner_planner_name: "InnerPlanner"
+      inner_planner_plugin: "nav2_navfn_planner::NavfnPlanner"
+
+    InnerPlanner:
+      plugin: "nav2_navfn_planner::NavfnPlanner"
+      tolerance: 0.5
+      use_astar: true
+      allow_unknown: false

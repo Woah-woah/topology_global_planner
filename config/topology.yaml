@@ -1,0 +1,53 @@
+# TJ-style weak topology map example.
+# Replace these coordinates with your real RM map coordinates.
+# Rule:
+#   regions: large polygon areas, written clockwise or counterclockwise
+#   connectors: portal lines (door segments) between two regions, or legacy waypoint points
+#   mode: two_way or one_way
+#   cost: topology-level preference; lower means more preferred
+
+regions:
+  - id: R1
+    name: home_area
+    polygon:
+      - {x: 6.17, y: -3.17}
+      - {x: 6.99, y: -5.42}
+      - {x: -2.46, y: -5.42}
+      - {x: -2.46, y: 0.924}
+      - {x: 1.93, y: 0.924}
+      - {x: 1.93, y: -3.17}
+
+  - id: R2
+    name: ramp_area
+    polygon:
+      - {x: 6.99, y: -5.42}
+      - {x: 0.858, y: -5.42}
+      - {x: 0.858, y: -8.94}
+      - {x: 6.99, y:  -8.94}
+
+  - id: R3
+    name: transition_area
+    polygon:
+      - {x: 6.99, y: -5.42}
+      - {x: 6.99, y: -8.94}
+      - {x: 10.9, y:  -8.94}
+      - {x: 10.9, y: -5.42}
+
+connectors:
+  - id: C12
+    from: R1
+    to: R2
+    mode: two_way
+    portal:
+      start: {x: 6.49, y: -5.42}
+      end: {x: 4.66, y: -5.42}
+    cost: 1.0
+
+  - id: C23
+    from: R2
+    to: R3
+    mode: two_way
+    portal:
+      start: {x: 6.99, y: -7.80}
+      end: {x: 6.99, y: -8.47}
+    cost: 1.0

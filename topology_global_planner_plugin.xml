@@ -1,0 +1,11 @@
+<library path="topology_global_planner">
+  <class
+    name="topology_global_planner::TopologyGlobalPlanner"
+    type="topology_global_planner::TopologyGlobalPlanner"
+    base_class_type="nav2_core::GlobalPlanner">
+    <description>
+      A weak-constraint topology wrapper planner. It first searches a Region-Connector graph,
+      converts connectors into waypoints, then delegates every segment to an inner Nav2 global planner.
+    </description>
+  </class>
+</library>
