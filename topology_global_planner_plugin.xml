@@ -1,4 +1,4 @@
-<library path="topology_global_planner">
+<library path="topology_global_planner_plugin">
   <class
     name="topology_global_planner::TopologyGlobalPlanner"
     type="topology_global_planner::TopologyGlobalPlanner"

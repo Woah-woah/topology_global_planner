@@ -18,8 +18,11 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
 
-add_library(${PROJECT_NAME} SHARED
+set(PLUGIN_LIB_NAME ${PROJECT_NAME}_plugin)
+
+add_library(${PLUGIN_LIB_NAME} SHARED
   src/planner_lifecycle.cpp
   src/topology_io.cpp
   src/geometry_utils.cpp
@@ -28,14 +31,14 @@ add_library(${PROJECT_NAME} SHARED
   src/path_planning.cpp
 )
 
-target_include_directories(${PROJECT_NAME} PUBLIC
+target_include_directories(${PLUGIN_LIB_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
 
-target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
+target_compile_features(${PLUGIN_LIB_NAME} PUBLIC cxx_std_17)
 
-ament_target_dependencies(${PROJECT_NAME}
+ament_target_dependencies(${PLUGIN_LIB_NAME}
   rclcpp
   rclcpp_lifecycle
   pluginlib
@@ -49,13 +52,13 @@ ament_target_dependencies(${PROJECT_NAME}
   tf2_geometry_msgs
 )
 
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(${PLUGIN_LIB_NAME}
   yaml-cpp
 )
 
 pluginlib_export_plugin_description_file(nav2_core topology_global_planner_plugin.xml)
 
-install(TARGETS ${PROJECT_NAME}
+install(TARGETS ${PLUGIN_LIB_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -74,7 +77,7 @@ install(FILES topology_global_planner_plugin.xml
 )
 
 ament_export_include_directories(include)
-ament_export_libraries(${PROJECT_NAME})
+ament_export_libraries(${PLUGIN_LIB_NAME})
 ament_export_dependencies(
   rclcpp
   rclcpp_lifecycle
@@ -87,6 +90,10 @@ ament_export_dependencies(
   tf2
   tf2_ros
   tf2_geometry_msgs
+)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "srv/SwitchRouteMode.srv"
 )
 
 ament_package()
