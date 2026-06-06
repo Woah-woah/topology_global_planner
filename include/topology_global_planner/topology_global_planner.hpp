@@ -15,6 +15,8 @@
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "tf2_ros/buffer.h"
 
+#include "topology_global_planner/srv/switch_route_mode.hpp"
+
 namespace topology_global_planner
 {
 
@@ -58,6 +60,7 @@ struct TopologySearchResult
   std::vector<int> connector_indices;
 };
 
+
 class TopologyGlobalPlanner : public nav2_core::GlobalPlanner
 {
 public:
@@ -68,7 +71,8 @@ public:
     const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
     std::string name,
     std::shared_ptr<tf2_ros::Buffer> tf,
-    std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros) override;
+    std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros
+  ) override;
 
   void cleanup() override;
   void activate() override;
@@ -76,7 +80,8 @@ public:
 
   nav_msgs::msg::Path createPlan(
     const geometry_msgs::msg::PoseStamped & start,
-    const geometry_msgs::msg::PoseStamped & goal) override;
+    const geometry_msgs::msg::PoseStamped & goal
+  ) override;
 
 private:
   bool loadTopologyYaml(const std::string & yaml_path);
@@ -99,35 +104,42 @@ private:
 
   TopologySearchResult searchTopology(
     const std::string & start_region,
-    const std::string & goal_region) const;
+    const std::string & goal_region
+  ) const;
 
   std::vector<geometry_msgs::msg::PoseStamped> buildTopologyWaypoints(
     const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal,
-    const TopologySearchResult & topo_result) const;
+    const TopologySearchResult & topo_result
+  ) const;
 
   nav_msgs::msg::Path makeInnerPlannerPath(
     const geometry_msgs::msg::PoseStamped & start,
-    const geometry_msgs::msg::PoseStamped & goal);
+    const geometry_msgs::msg::PoseStamped & goal
+  );
 
   nav_msgs::msg::Path makeWeakTopologyPath(
-    const std::vector<geometry_msgs::msg::PoseStamped> & waypoints);
+    const std::vector<geometry_msgs::msg::PoseStamped> & waypoints
+  );
 
   nav_msgs::msg::Path makePortalOptimizedTopologyPath(
     const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal,
-    const TopologySearchResult & topo_result);
+    const TopologySearchResult & topo_result
+  );
 
   std::vector<geometry_msgs::msg::PoseStamped> sampleConnectorPoses(
     const Connector & connector,
-    const rclcpp::Time & stamp) const;
+    const rclcpp::Time & stamp
+  ) const;
 
   std::vector<geometry_msgs::msg::PoseStamped> sampleConnectorPosesAround(
     const Connector & connector,
     const rclcpp::Time & stamp,
     double center_t,
     double half_width,
-    int sample_count) const;
+    int sample_count
+  ) const;
 
   double projectionTOnConnector(
     const Connector & connector,
@@ -159,6 +171,17 @@ private:
     double cost{1.0};
   };
 
+  // 加入切换cost的server
+  rclcpp::Service<topology_global_planner::srv::SwitchRouteMode>::SharedPtr switch_route_mode_srv_;
+  uint8_t route_mode_{0}; //初始走path1
+  // 定义callback切换mode
+  void switchRouteModeCallback(
+    const std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Request> request,
+    std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Response> response
+  );
+  //根据mode修改apply cost
+  void applyModeCost();
+
   rclcpp_lifecycle::LifecycleNode::SharedPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
@@ -183,7 +206,7 @@ private:
   bool enforce_region_constraint_{true};
   double region_constraint_tolerance_{0.15};
 
-  std::string inner_planner_plugin_{"nav2_navfn_planner::NavfnPlanner"};
+  std::string inner_planner_plugin_{"nav2_navfn_planner/NavfnPlanner"};
   std::string inner_planner_name_{"InnerPlanner"};
   pluginlib::ClassLoader<nav2_core::GlobalPlanner> inner_planner_loader_;
   nav2_core::GlobalPlanner::Ptr inner_planner_;

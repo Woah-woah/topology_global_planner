@@ -374,7 +374,17 @@ planner_plugins: ["TopoPlanner"]
 
 ---
 
-## 10. 如果原来用 SmacPlanner2D
+## 10. 测试切换 route mode 服务
+
+如果已经启动 Nav2，并且 `TopologyGlobalPlanner` 已经成功加载，可以这样测试切换 route mode：
+
+```bash
+ros2 service call /switch_route_mode topology_global_planner/srv/SwitchRouteMode "{}"
+```
+
+---
+
+## 11. 如果原来用 SmacPlanner2D
 
 如果你的原始全局规划器是 Smac，可以这样改：
 
@@ -402,7 +412,7 @@ InnerPlanner:
 
 ---
 
-## 11. 主要参数说明
+## 12. 主要参数说明
 
 | 参数 | 默认值 | 作用 |
 |---|---:|---|
@@ -424,9 +434,9 @@ InnerPlanner:
 
 ---
 
-## 12. topology.yaml 格式
+## 13. topology.yaml 格式
 
-### 12.1 regions
+### 13.1 regions
 
 ```yaml
 regions:

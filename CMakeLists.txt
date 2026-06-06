@@ -95,5 +95,6 @@ ament_export_dependencies(
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SwitchRouteMode.srv"
 )
+rosidl_target_interfaces(${PLUGIN_LIB_NAME} ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 ament_package()

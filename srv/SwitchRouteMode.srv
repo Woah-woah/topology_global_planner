@@ -2,4 +2,3 @@
 ---
 # response
 bool success
-uint8 current_mode
