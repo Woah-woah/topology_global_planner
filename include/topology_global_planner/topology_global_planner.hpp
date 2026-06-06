@@ -171,6 +171,8 @@ private:
     double cost{1.0};
   };
 
+
+/*-----------------------------SwitchCostMode SERVICE--------------------------------------*/
   // 加入切换cost的server
   rclcpp::Service<topology_global_planner::srv::SwitchRouteMode>::SharedPtr switch_route_mode_srv_;
   uint8_t route_mode_{0}; //初始走path1
@@ -179,8 +181,9 @@ private:
     const std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Request> request,
     std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Response> response
   );
-  //根据mode修改apply cost
-  void applyModeCost();
+  void applyModeCost();  //根据mode修改apply cost
+  void setConnectorCost(const std::string &connector_id, double new_cost); //修改cost
+/*--------------------------------------------------------------------------------------------------------*/
 
   rclcpp_lifecycle::LifecycleNode::SharedPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;

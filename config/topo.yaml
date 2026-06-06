@@ -73,7 +73,7 @@ connectors:
   - id: C43
     from: R4
     to: R3
-    mode: one_way
+    mode: two_way
     portal:
       start: {x: 10.686589549240244, y: -4.532875837380117}
       end: {x: 10.617631852445117, y: -7.6070664496525326}

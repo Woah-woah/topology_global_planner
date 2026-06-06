@@ -90,7 +90,7 @@ void TopologyGlobalPlanner::configure(
   node_->get_parameter(name_ + ".inner_planner_plugin", inner_planner_plugin_);
   node_->get_parameter(name_ + ".inner_planner_name", inner_planner_name_);
 
-  
+
   try {
     inner_planner_ = inner_planner_loader_.createUniqueInstance(inner_planner_plugin_);
     inner_planner_->configure(parent, inner_planner_name_, tf_, costmap_ros_);
@@ -224,16 +224,29 @@ void TopologyGlobalPlanner::switchRouteModeCallback(
 
   //应用更改
   applyModeCost();
+  buildGraph();
 
   response->success = true;
 }
 
 void TopologyGlobalPlanner::applyModeCost(){
-  if(route_mode_ == 0){
-    RCLCPP_INFO(node_->get_logger(), "mode: 0");
+  if(route_mode_ == 1){
+    setConnectorCost("C54", 1.0);
+    setConnectorCost("C43", 999.0);
   } else {
-    RCLCPP_INFO(node_->get_logger(), "mode: 1");
+    setConnectorCost("C54", 999.0);
+    setConnectorCost("C43", 1.0);
   }
+}
+
+void TopologyGlobalPlanner::setConnectorCost(const std::string &connector_id, double new_cost){
+  for(auto &connector : connectors_){
+    if(connector.id == connector_id){
+      connector.cost = new_cost;
+      return;
+    }
+  }
+  return;
 }
 
 }  // namespace topology_global_planner
