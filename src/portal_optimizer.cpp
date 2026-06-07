@@ -40,7 +40,7 @@ std::vector<geometry_msgs::msg::PoseStamped> TopologyGlobalPlanner::sampleConnec
     const int n = std::max(1, portal_sample_count_);
     poses.reserve(static_cast<size_t>(n));
 
-    for (int i = 0; i < n; ++i) {
+    for (int i = 0; i < n; i++) {
       // Coarse samples. Do not sample exact endpoints; they are often close to walls or region boundaries.
       // Example: n=5 -> t = 1/6, 2/6, ..., 5/6.
       const double t = static_cast<double>(i + 1) / static_cast<double>(n + 1);
@@ -56,10 +56,6 @@ std::vector<geometry_msgs::msg::PoseStamped> TopologyGlobalPlanner::sampleConnec
     return poses;
   }
 
-  if (connector.has_waypoint) {
-    poses.push_back(makePoseFromPoint(connector.waypoint, stamp));
-  }
-
   return poses;
 }
 
@@ -71,13 +67,6 @@ std::vector<geometry_msgs::msg::PoseStamped> TopologyGlobalPlanner::sampleConnec
   int sample_count) const
 {
   std::vector<geometry_msgs::msg::PoseStamped> poses;
-
-  if (!connector.has_portal) {
-    if (connector.has_waypoint) {
-      poses.push_back(makePoseFromPoint(connector.waypoint, stamp));
-    }
-    return poses;
-  }
 
   const int n = std::max(1, sample_count);
   poses.reserve(static_cast<size_t>(n));

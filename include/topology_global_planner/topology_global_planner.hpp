@@ -46,10 +46,6 @@ struct Connector
   Point2D portal_start;
   Point2D portal_end;
 
-  // Backward compatibility: old topology.yaml files may still use a point waypoint.
-  bool has_waypoint{false};
-  Point2D waypoint;
-
   double cost{1.0};
 };
 
@@ -89,16 +85,13 @@ private:
   bool hasRegion(const std::string & id) const;
 
   std::string findRegion(double x, double y) const;
-  std::string chooseBestRegionByCentroid(
-    double x, double y, const std::vector<std::string> & candidates) const;
+  std::string chooseBestRegionByCentroid(double x, double y, const std::vector<std::string> & candidates) const;
   bool pointInPolygon(double x, double y, const std::vector<Point2D> & polygon) const;
   bool pointOnPolygonBoundary(double x, double y, const std::vector<Point2D> & polygon) const;
-  bool pointOnPolygonBoundary(
-    double x, double y, const std::vector<Point2D> & polygon, double tolerance) const;
+  bool pointOnPolygonBoundary(double x, double y, const std::vector<Point2D> & polygon, double tolerance) const;
   const Region * getRegionById(const std::string & id) const;
   bool pointInRegionWithTolerance(double x, double y, const std::string & region_id, double tolerance) const;
-  bool pathInsideRegionWithTolerance(
-    const nav_msgs::msg::Path & path, const std::string & region_id, double tolerance) const;
+  bool pathInsideRegionWithTolerance(const nav_msgs::msg::Path & path, const std::string & region_id, double tolerance) const;
   double distancePointToSegment(const Point2D & p, const Point2D & a, const Point2D & b) const;
   Point2D computeCentroid(const std::vector<Point2D> & polygon) const;
 
@@ -183,7 +176,7 @@ private:
   );
   void applyModeCost();  //根据mode修改apply cost
   void setConnectorCost(const std::string &connector_id, double new_cost); //修改cost
-/*--------------------------------------------------------------------------------------------------------*/
+/*-----------------------------------------------------------------------------------------*/
 
   rclcpp_lifecycle::LifecycleNode::SharedPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;

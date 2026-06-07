@@ -97,16 +97,14 @@ void TopologyGlobalPlanner::configure(
     inner_planner_configured_ = true;
   } catch (const std::exception & e) {
     throw std::runtime_error(
-            std::string("Failed to load/configure inner planner '") +
-            inner_planner_plugin_ + "': " + e.what());
+            std::string("Failed to load/configure inner planner '") + inner_planner_plugin_ + "': " + e.what());
   }
 
   if (use_topology_ && !topology_yaml_.empty()) {
-    if (loadTopologyYaml(topology_yaml_)) {
+    if (loadTopologyYaml(topology_yaml_)) {            // 从yaml中读取regions connectors 失败回退
       buildGraph();
     } else {
-      RCLCPP_WARN(
-        node_->get_logger(), "Failed to load topology yaml. Topology layer will be bypassed; inner planner will be used directly.");
+      RCLCPP_WARN(node_->get_logger(), "Failed to load topology yaml. Topology layer will be bypassed; inner planner will be used directly.");
       use_topology_ = false;
     }
   } else {
