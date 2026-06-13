@@ -1,0 +1,17 @@
+#request
+string session_id
+string connector_id
+string action_type
+string phase
+
+geometry_msgs/PoseStamped connector_pose
+geometry_msgs/PoseStamped wait_pose
+geometry_msgs/PoseStamped exit_pose
+
+float64 timeout
+string cancel_policy
+---
+#respond
+bool success
+string message
+string new_state

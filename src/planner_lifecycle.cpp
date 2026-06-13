@@ -31,11 +31,6 @@ void TopologyGlobalPlanner::configure(
     throw std::runtime_error("Failed to lock lifecycle node in TopologyGlobalPlanner::configure");
   }
 
-  switch_route_mode_srv_ = node_->create_service<topology_global_planner::srv::SwitchRouteMode>(
-    "/switch_route_mode",
-    std::bind(&TopologyGlobalPlanner::switchRouteModeCallback, this, std::placeholders::_1, std::placeholders::_2)
-  ); // request和response各要一个占位符
-
   name_ = name;
   tf_ = tf;
   costmap_ros_ = costmap_ros;
@@ -111,6 +106,20 @@ void TopologyGlobalPlanner::configure(
     RCLCPP_WARN(
       node_->get_logger(), "Topology disabled or topology_yaml is empty. Inner planner will be used directly.");
   }
+
+  query_route_service_ = node_->create_service<topology_global_planner::srv::QueryTopologyRoute>(
+    "TopoPlanner/query_topology_route",
+    std::bind(
+      &TopologyGlobalPlanner::handleQueryTopologyRoute, this, std::placeholders::_1, std::placeholders::_2));
+  
+  switch_route_mode_srv_ = node_->create_service<topology_global_planner::srv::SwitchRouteMode>(
+    "TopoPlanner/switch_route_mode",
+    std::bind(&TopologyGlobalPlanner::switchRouteModeCallback, this, std::placeholders::_1, std::placeholders::_2)
+  );
+
+  connector_debug_markers_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
+    "TopoPlanner/connector_debug_markers",
+    rclcpp::QoS(1).transient_local().reliable());
 }
 
 void TopologyGlobalPlanner::cleanup()
@@ -208,43 +217,6 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
   }
 
   return path;
-}
-
-
-/*-------------------------SwitchRouteMode server---------------------------*/
-// server callback：切换cost mode
-void TopologyGlobalPlanner::switchRouteModeCallback(
-  const std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Request> request,
-  std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Response> response
-){
-  (void)request; // request为空，占位声明，消除编译器的“未使用参数”警告
-  route_mode_ = 1 - route_mode_; //将要切换的mode转化成与当前不同的mode
-
-  //应用更改
-  applyModeCost();
-  buildGraph();
-
-  response->success = true;
-}
-
-void TopologyGlobalPlanner::applyModeCost(){
-  if(route_mode_ == 1){
-    setConnectorCost("C54", 1.0);
-    setConnectorCost("C43", 999.0);
-  } else {
-    setConnectorCost("C54", 999.0);
-    setConnectorCost("C43", 1.0);
-  }
-}
-
-void TopologyGlobalPlanner::setConnectorCost(const std::string &connector_id, double new_cost){
-  for(auto &connector : connectors_){
-    if(connector.id == connector_id){
-      connector.cost = new_cost;
-      return;
-    }
-  }
-  return;
 }
 
 }  // namespace topology_global_planner

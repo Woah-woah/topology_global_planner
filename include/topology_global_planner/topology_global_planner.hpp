@@ -14,8 +14,11 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "tf2_ros/buffer.h"
+#include "visualization_msgs/msg/marker_array.hpp"
 
 #include "topology_global_planner/srv/switch_route_mode.hpp"
+#include "topology_global_planner/srv/query_topology_route.hpp"
+#include "topology_global_planner/srv/execute_connector_action.hpp"
 
 namespace topology_global_planner
 {
@@ -40,12 +43,17 @@ struct Connector
   std::string from;
   std::string to;
   std::string mode{"two_way"};
-
-  // A connector can be a portal line segment (door) between two regions.
   Point2D portal_start;
   Point2D portal_end;
-
   double cost{1.0};
+//-----------------------------
+  bool has_action{false};
+  std::string action_type;
+  double wait_offset{0.8};
+  double exit_offset{0.8};
+  std::string cancel_policy{"up_if_safe"};
+  double down_timeout{10.0};
+  double up_monitor_timeout{30.0};
 };
 
 struct TopologySearchResult
@@ -153,20 +161,6 @@ private:
     double cost{1.0};
   };
 
-
-/*-----------------------------SwitchCostMode SERVICE--------------------------------------*/
-  // 加入切换cost的server
-  rclcpp::Service<topology_global_planner::srv::SwitchRouteMode>::SharedPtr switch_route_mode_srv_;
-  uint8_t route_mode_{0}; //初始走path1
-  // 定义callback切换mode
-  void switchRouteModeCallback(
-    const std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Request> request,
-    std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Response> response
-  );
-  void applyModeCost();  //根据mode修改apply cost
-  void setConnectorCost(const std::string &connector_id, double new_cost); //修改cost
-/*-----------------------------------------------------------------------------------------*/
-
   rclcpp_lifecycle::LifecycleNode::SharedPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
@@ -201,6 +195,39 @@ private:
   std::vector<Region> regions_;
   std::vector<Connector> connectors_;
   std::unordered_map<std::string, std::vector<DirectedEdge>> graph_;
+
+/*-----------------------------------------SERVICE-----------------------------------------*/
+  rclcpp::Service<topology_global_planner::srv::SwitchRouteMode>::SharedPtr switch_route_mode_srv_;
+  rclcpp::Service<topology_global_planner::srv::QueryTopologyRoute>::SharedPtr query_route_service_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr connector_debug_markers_pub_;
+  uint8_t route_mode_{0};
+
+  void switchRouteModeCallback(
+    const std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Request> request,
+    std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Response> response
+  );
+  void handleQueryTopologyRoute(
+    const std::shared_ptr<topology_global_planner::srv::QueryTopologyRoute::Request> request,
+    std::shared_ptr<topology_global_planner::srv::QueryTopologyRoute::Response> response
+  );
+  void applyModeCost();  //根据mode修改apply cost
+  void setConnectorCost(const std::string &connector_id, double new_cost); //修改cost
+  void publishConnectorDebugMarkers();
+  
+  geometry_msgs::msg::PoseStamped computeConnectorWaitPose(
+    const Connector & connector,
+    const std::string & approach_region_id,
+    const rclcpp::Time & stamp) const;
+
+  geometry_msgs::msg::PoseStamped computeConnectorExitPose(
+    const Connector & connector,
+    const std::string & approach_region_id,
+    const rclcpp::Time & stamp) const;
+
+  geometry_msgs::msg::PoseStamped computeConnectorCenterPose(
+    const Connector & connector,
+    const rclcpp::Time & stamp) const;
+/*-----------------------------------------------------------------------------------------*/
 };
 
 }  // namespace topology_global_planner

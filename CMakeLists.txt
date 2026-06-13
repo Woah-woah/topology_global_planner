@@ -19,6 +19,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 set(PLUGIN_LIB_NAME ${PROJECT_NAME}_plugin)
 
@@ -29,6 +30,7 @@ add_library(${PLUGIN_LIB_NAME} SHARED
   src/topology_search.cpp
   src/portal_optimizer.cpp
   src/path_planning.cpp
+  src/topology_query_service.cpp
 )
 
 target_include_directories(${PLUGIN_LIB_NAME} PUBLIC
@@ -50,10 +52,7 @@ ament_target_dependencies(${PLUGIN_LIB_NAME}
   tf2
   tf2_ros
   tf2_geometry_msgs
-)
-
-target_link_libraries(${PLUGIN_LIB_NAME}
-  yaml-cpp
+  visualization_msgs
 )
 
 pluginlib_export_plugin_description_file(nav2_core topology_global_planner_plugin.xml)
@@ -90,11 +89,24 @@ ament_export_dependencies(
   tf2
   tf2_ros
   tf2_geometry_msgs
+  visualization_msgs
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SwitchRouteMode.srv"
+  "srv/QueryTopologyRoute.srv"
+  "srv/ExecuteConnectorAction.srv"
+  DEPENDENCIES geometry_msgs
 )
-rosidl_target_interfaces(${PLUGIN_LIB_NAME} ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+rosidl_get_typesupport_target(cpp_typesupport_target
+  ${PROJECT_NAME}
+  "rosidl_typesupport_cpp"
+)
+
+target_link_libraries(${PLUGIN_LIB_NAME}
+  yaml-cpp
+  "${cpp_typesupport_target}"
+)
 
 ament_package()

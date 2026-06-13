@@ -397,12 +397,12 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
 
   auto refined_result = solve_layers(refined_layers, expected_regions);
   if (refined_result.success && refined_result.cost <= coarse_result.cost) {
-    RCLCPP_INFO(
-      logger_,
-      "Portal adaptive topology path success: %zu connector(s), coarse=%d, refine=%d, cost %.3f -> %.3f, planner_calls=%d+%d",
-      topo_result.connector_indices.size(), portal_sample_count_, portal_refine_sample_count_,
-      coarse_result.cost, refined_result.cost, coarse_result.planner_calls,
-      refined_result.planner_calls);
+    // RCLCPP_INFO(
+    //   logger_,
+    //   "Portal adaptive topology path success: %zu connector(s), coarse=%d, refine=%d, cost %.3f -> %.3f, planner_calls=%d+%d",
+    //   topo_result.connector_indices.size(), portal_sample_count_, portal_refine_sample_count_,
+    //   coarse_result.cost, refined_result.cost, coarse_result.planner_calls,
+    //   refined_result.planner_calls);
     return refined_result.path;
   }
 
