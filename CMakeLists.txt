@@ -31,6 +31,7 @@ add_library(${PLUGIN_LIB_NAME} SHARED
   src/portal_optimizer.cpp
   src/path_planning.cpp
   src/topology_query_service.cpp
+  src/switch_route_service.cpp
 )
 
 target_include_directories(${PLUGIN_LIB_NAME} PUBLIC

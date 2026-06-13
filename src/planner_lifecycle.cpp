@@ -132,6 +132,9 @@ void TopologyGlobalPlanner::cleanup()
     }
     inner_planner_->cleanup();
   }
+  query_route_service_.reset();
+  switch_route_mode_srv_.reset();
+  connector_debug_markers_pub_.reset();
   inner_planner_.reset();
   inner_planner_configured_ = false;
   regions_.clear();
