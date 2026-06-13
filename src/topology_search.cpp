@@ -16,33 +16,32 @@
 namespace topology_global_planner
 {
 
-TopologySearchResult TopologyGlobalPlanner::searchTopology(
-  const std::string & start_region,
-  const std::string & goal_region) const
-{
+TopologySearchResult TopologyGlobalPlanner::searchTopology(const std::string & start_region, const std::string & goal_region) const {
   TopologySearchResult result;
 
   struct QueueItem
   {
     double cost;
     std::string region;
-    bool operator>(const QueueItem & other) const {return cost > other.cost;}
+    bool operator>(const QueueItem & other) const {    // operator后的>表示重载>运算符
+      return cost > other.cost;                        // other是和当前对象比较的另一个对象 const指不改变当前对象的值
+    }
   };
 
-  std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<QueueItem>> open;
-  std::unordered_map<std::string, double> dist;
+  std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<QueueItem>> open; // 优先队列: std::priority_queue<元素类型, 底层容器, 比较规则> 变量名;
+  std::unordered_map<std::string, double> dist;                                         // std::greater<QueueItem>小根堆 使用“大于”比较 open.top()弹出的是最小值
   std::unordered_map<std::string, std::string> parent_region;
   std::unordered_map<std::string, int> parent_connector;
 
   for (const auto & r : regions_) {
-    dist[r.id] = std::numeric_limits<double>::infinity();
+    dist[r.id] = std::numeric_limits<double>::infinity();       //e.g. d["R3"] = 10.0 到每个region的cost
   }
   dist[start_region] = 0.0;
   open.push(QueueItem{0.0, start_region});
 
   while (!open.empty()) {
     const auto current = open.top();
-    open.pop();
+    open.pop();                             // 弹出堆中最小对象
 
     if (current.cost > dist[current.region]) {
       continue;
@@ -92,50 +91,6 @@ TopologySearchResult TopologyGlobalPlanner::searchTopology(
   result.region_path = reversed_regions;
   result.connector_indices = reversed_connectors;
   return result;
-}
-
-std::vector<geometry_msgs::msg::PoseStamped> TopologyGlobalPlanner::buildTopologyWaypoints(
-  const geometry_msgs::msg::PoseStamped & start,
-  const geometry_msgs::msg::PoseStamped & goal,
-  const TopologySearchResult & topo_result) const
-{
-  // Compatibility helper for the old weak topology path mode.
-  // Portal connectors are reduced to the middle sample here. The preferred path
-  // builder is makePortalOptimizedTopologyPath(), which optimizes over all samples.
-  std::vector<geometry_msgs::msg::PoseStamped> waypoints;
-  auto fixed_start = start;
-  auto fixed_goal = goal;
-  fixed_start.header.frame_id = global_frame_;
-  fixed_goal.header.frame_id = global_frame_;
-  const auto plan_stamp = fixed_start.header.stamp.sec == 0 && fixed_start.header.stamp.nanosec == 0 && clock_ ?
-    clock_->now() : rclcpp::Time(fixed_start.header.stamp);
-  fixed_start.header.stamp = plan_stamp;
-  fixed_goal.header.stamp = plan_stamp;
-
-  waypoints.push_back(fixed_start);
-  for (const int idx : topo_result.connector_indices) {
-    if (idx >= 0 && static_cast<size_t>(idx) < connectors_.size()) {
-      const auto samples = sampleConnectorPoses(connectors_[idx], plan_stamp);
-      if (!samples.empty()) {
-        waypoints.push_back(samples[samples.size() / 2]);
-      }
-    }
-  }
-  waypoints.push_back(fixed_goal);
-
-  std::vector<geometry_msgs::msg::PoseStamped> cleaned;
-  for (const auto & wp : waypoints) {
-    if (cleaned.empty() ||
-      euclidean(
-        cleaned.back().pose.position.x, cleaned.back().pose.position.y,
-        wp.pose.position.x, wp.pose.position.y) > duplicate_pose_tolerance_)
-    {
-      cleaned.push_back(wp);
-    }
-  }
-
-  assignIntermediateOrientations(cleaned);
-  return cleaned;
 }
 
 

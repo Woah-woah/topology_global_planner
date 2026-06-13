@@ -18,7 +18,7 @@ namespace topology_global_planner
 
 geometry_msgs::msg::PoseStamped TopologyGlobalPlanner::makePoseFromPoint(
   const Point2D & point,
-  const rclcpp::Time & stamp) const
+  const rclcpp::Time & stamp) const                 // 把二维点，变成 ROS/Nav2 能用的 pose
 {
   geometry_msgs::msg::PoseStamped pose;
   pose.header.frame_id = global_frame_;
@@ -30,33 +30,30 @@ geometry_msgs::msg::PoseStamped TopologyGlobalPlanner::makePoseFromPoint(
   return pose;
 }
 
+
+// 取portal均分粗采样点
 std::vector<geometry_msgs::msg::PoseStamped> TopologyGlobalPlanner::sampleConnectorPoses(
   const Connector & connector,
   const rclcpp::Time & stamp) const
 {
   std::vector<geometry_msgs::msg::PoseStamped> poses;
 
-  if (connector.has_portal) {
-    const int n = std::max(1, portal_sample_count_);
-    poses.reserve(static_cast<size_t>(n));
+  const int n = std::max(1, portal_sample_count_);
+  poses.reserve(static_cast<size_t>(n));
 
-    for (int i = 0; i < n; i++) {
-      // Coarse samples. Do not sample exact endpoints; they are often close to walls or region boundaries.
-      // Example: n=5 -> t = 1/6, 2/6, ..., 5/6.
-      const double t = static_cast<double>(i + 1) / static_cast<double>(n + 1);
+  for (int i = 0; i < n; i++) {
+    // Coarse samples. Do not sample exact endpoints; they are often close to walls or region boundaries.
+    // Example: n=5 -> t = 1/6, 2/6, ..., 5/6.
+    const double t = static_cast<double>(i + 1) / static_cast<double>(n + 1);
 
-      Point2D p;
-      p.x = connector.portal_start.x +
-        t * (connector.portal_end.x - connector.portal_start.x);
-      p.y = connector.portal_start.y +
-        t * (connector.portal_end.y - connector.portal_start.y);
+    Point2D p;
+    p.x = connector.portal_start.x + t * (connector.portal_end.x - connector.portal_start.x);
+    p.y = connector.portal_start.y + t * (connector.portal_end.y - connector.portal_start.y);
 
-      poses.push_back(makePoseFromPoint(p, stamp));
-    }
-    return poses;
+    poses.push_back(makePoseFromPoint(p, stamp));
   }
-
   return poses;
+
 }
 
 std::vector<geometry_msgs::msg::PoseStamped> TopologyGlobalPlanner::sampleConnectorPosesAround(
@@ -79,7 +76,7 @@ std::vector<geometry_msgs::msg::PoseStamped> TopologyGlobalPlanner::sampleConnec
   const double low = std::clamp(center_t - half_width, endpoint_margin, 1.0 - endpoint_margin);
   const double high = std::clamp(center_t + half_width, endpoint_margin, 1.0 - endpoint_margin);
 
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < n; i++) {
     double t = center_t;
     if (n > 1 && high > low) {
       t = low + (high - low) * static_cast<double>(i) / static_cast<double>(n - 1);
@@ -87,10 +84,8 @@ std::vector<geometry_msgs::msg::PoseStamped> TopologyGlobalPlanner::sampleConnec
     t = std::clamp(t, endpoint_margin, 1.0 - endpoint_margin);
 
     Point2D p;
-    p.x = connector.portal_start.x +
-      t * (connector.portal_end.x - connector.portal_start.x);
-    p.y = connector.portal_start.y +
-      t * (connector.portal_end.y - connector.portal_start.y);
+    p.x = connector.portal_start.x + t * (connector.portal_end.x - connector.portal_start.x);
+    p.y = connector.portal_start.y + t * (connector.portal_end.y - connector.portal_start.y);
 
     poses.push_back(makePoseFromPoint(p, stamp));
   }
@@ -102,9 +97,6 @@ double TopologyGlobalPlanner::projectionTOnConnector(
   const Connector & connector,
   const geometry_msgs::msg::PoseStamped & pose) const
 {
-  if (!connector.has_portal) {
-    return 0.5;
-  }
 
   const double ax = connector.portal_start.x;
   const double ay = connector.portal_start.y;
@@ -379,14 +371,6 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
     }
 
     const auto & connector = connectors_[idx];
-    if (!connector.has_portal) {
-      auto samples = sampleConnectorPoses(connector, plan_stamp);
-      if (samples.empty()) {
-        return coarse_result.path;
-      }
-      refined_layers.push_back(samples);
-      continue;
-    }
 
     const size_t layer_index = i + 1;
     if (layer_index >= coarse_layers.size() || layer_index >= coarse_result.selected_indices.size()) {

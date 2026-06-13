@@ -42,7 +42,6 @@ struct Connector
   std::string mode{"two_way"};
 
   // A connector can be a portal line segment (door) between two regions.
-  bool has_portal{false};
   Point2D portal_start;
   Point2D portal_end;
 
@@ -52,8 +51,8 @@ struct Connector
 struct TopologySearchResult
 {
   bool success{false};
-  std::vector<std::string> region_path;
-  std::vector<int> connector_indices;
+  std::vector<std::string> region_path;        // 拓扑路径
+  std::vector<int> connector_indices;          // connector索引
 };
 
 

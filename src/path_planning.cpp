@@ -16,43 +16,6 @@
 namespace topology_global_planner
 {
 
-void TopologyGlobalPlanner::assignIntermediateOrientations(
-  std::vector<geometry_msgs::msg::PoseStamped> & waypoints) const
-{
-  if (waypoints.size() < 3) {
-    return;
-  }
-
-  // Keep start pose orientation and final goal orientation unchanged.
-  for (size_t i = 1; i + 1 < waypoints.size(); ++i) {
-    const auto & current = waypoints[i].pose.position;
-    const auto & next = waypoints[i + 1].pose.position;
-    double dx = next.x - current.x;
-    double dy = next.y - current.y;
-
-    if (std::hypot(dx, dy) <= duplicate_pose_tolerance_) {
-      // Degenerate case: look backward instead of producing an arbitrary yaw.
-      const auto & prev = waypoints[i - 1].pose.position;
-      dx = current.x - prev.x;
-      dy = current.y - prev.y;
-    }
-
-    if (std::hypot(dx, dy) > 1e-6) {
-      setYaw(waypoints[i], std::atan2(dy, dx));
-    }
-  }
-}
-
-void TopologyGlobalPlanner::setYaw(geometry_msgs::msg::PoseStamped & pose, double yaw) const
-{
-  tf2::Quaternion q;
-  q.setRPY(0.0, 0.0, yaw);
-  pose.pose.orientation.x = q.x();
-  pose.pose.orientation.y = q.y();
-  pose.pose.orientation.z = q.z();
-  pose.pose.orientation.w = q.w();
-}
-
 nav_msgs::msg::Path TopologyGlobalPlanner::makeInnerPlannerPath(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal)
@@ -67,31 +30,6 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makeInnerPlannerPath(
   return path;
 }
 
-nav_msgs::msg::Path TopologyGlobalPlanner::makeWeakTopologyPath(
-  const std::vector<geometry_msgs::msg::PoseStamped> & waypoints)
-{
-  nav_msgs::msg::Path full_path;
-  full_path.header.frame_id = global_frame_;
-  full_path.header.stamp = clock_ ? clock_->now() : rclcpp::Time(0);
-
-  if (waypoints.size() < 2) {
-    return full_path;
-  }
-
-  for (size_t i = 0; i + 1 < waypoints.size(); ++i) {
-    auto segment = makeInnerPlannerPath(waypoints[i], waypoints[i + 1]);
-    if (segment.poses.empty()) {
-      RCLCPP_WARN(
-        logger_, "Inner planner segment %zu/%zu failed in weak topology path",
-        i + 1, waypoints.size() - 1);
-      full_path.poses.clear();
-      return full_path;
-    }
-    appendSegment(full_path, segment);
-  }
-
-  return full_path;
-}
 
 nav_msgs::msg::Path TopologyGlobalPlanner::fallbackDirectPlan(
   const geometry_msgs::msg::PoseStamped & start,
@@ -111,12 +49,14 @@ nav_msgs::msg::Path TopologyGlobalPlanner::fallbackDirectPlan(
   return makeInnerPlannerPath(start, goal);
 }
 
+
+// createPlan 前的输入 pose 标准化函数
 geometry_msgs::msg::PoseStamped TopologyGlobalPlanner::normalizePoseFrame(
   const geometry_msgs::msg::PoseStamped & pose) const
 {
   geometry_msgs::msg::PoseStamped normalized = pose;
   if (normalized.header.frame_id.empty()) {
-    normalized.header.frame_id = global_frame_;
+    normalized.header.frame_id = global_frame_;                  // frame id空的话，补成global_frame_
   }
 
   // Do not overwrite a meaningful timestamp. Nav2 usually supplies poses in the global
@@ -125,7 +65,7 @@ geometry_msgs::msg::PoseStamped TopologyGlobalPlanner::normalizePoseFrame(
     if (normalized.header.stamp.sec == 0 && normalized.header.stamp.nanosec == 0 && clock_) {
       normalized.header.stamp = clock_->now();
     }
-    return normalized;
+    return normalized;                                           // stamp 空的话，补成当前时间
   }
 
   try {
@@ -135,8 +75,8 @@ geometry_msgs::msg::PoseStamped TopologyGlobalPlanner::normalizePoseFrame(
       tf2::durationFromSec(std::max(0.0, transform_tolerance_)));
     if (transformed.header.stamp.sec == 0 && transformed.header.stamp.nanosec == 0 && clock_) {
       transformed.header.stamp = clock_->now();
-    }
-    return transformed;
+    }                                                            // 把 normalized 这个 pose 从它自己 header 里的坐标系
+    return transformed;                                          // 转换到 global_frame_，并且最多等待 transform_tolerance_ 这么长时间来查 TF
   } catch (const std::exception & e) {
     RCLCPP_WARN(
       logger_, "Failed to transform pose from '%s' to '%s': %s. Using original pose.",
@@ -145,6 +85,7 @@ geometry_msgs::msg::PoseStamped TopologyGlobalPlanner::normalizePoseFrame(
   }
 }
 
+// 把小段路径拼成full_path
 void TopologyGlobalPlanner::appendSegment(nav_msgs::msg::Path & full_path, const nav_msgs::msg::Path & segment) const
 {
   if (segment.poses.empty()) {
@@ -156,16 +97,16 @@ void TopologyGlobalPlanner::appendSegment(nav_msgs::msg::Path & full_path, const
   }
 
   size_t start_index = 0;
-  if (!full_path.poses.empty()) {
+  if (!full_path.poses.empty()) {                                   // fullpath非空, 拿fullpath的最后一个点，去和接进来的小段的第一个点作比较，如果很近，就认为是一个点
     const auto & last = full_path.poses.back().pose.position;
     const auto & first = segment.poses.front().pose.position;
     if (euclidean(last.x, last.y, first.x, first.y) <= duplicate_pose_tolerance_) {
-      start_index = 1;
+      start_index = 1;                                              // 放弃第一个点，从下一个点开始拼
     }
   }
 
-  for (size_t i = start_index; i < segment.poses.size(); ++i) {
-    full_path.poses.push_back(segment.poses[i]);
+  for (size_t i = start_index; i < segment.poses.size(); i++) {
+    full_path.poses.push_back(segment.poses[i]);                    // 把小段的点放进fullpath
   }
 }
 

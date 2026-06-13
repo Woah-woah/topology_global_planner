@@ -72,7 +72,6 @@ bool TopologyGlobalPlanner::loadTopologyYaml(const std::string & yaml_path)
         connector.portal_start.y = portal_start["y"].as<double>();
         connector.portal_end.x = portal_end["x"].as<double>();
         connector.portal_end.y = portal_end["y"].as<double>();
-        connector.has_portal = true;
 
         if (euclidean(
             connector.portal_start.x, connector.portal_start.y,
@@ -96,7 +95,7 @@ bool TopologyGlobalPlanner::loadTopologyYaml(const std::string & yaml_path)
   return true;
 }
 
-void TopologyGlobalPlanner::buildGraph()
+void TopologyGlobalPlanner::buildGraph()                      // 根据from to 转化成邻接图
 {
   graph_.clear();
   for (size_t i = 0; i < connectors_.size(); i++) {
