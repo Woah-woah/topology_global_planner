@@ -117,6 +117,11 @@ void TopologyGlobalPlanner::configure(
     std::bind(&TopologyGlobalPlanner::switchRouteModeCallback, this, std::placeholders::_1, std::placeholders::_2)
   );
 
+  re_connector_cost_srv_ = node_->create_service<topology_global_planner::srv::RestoreConnectorCost>(
+    "TopoPlanner/re_connector_cost",
+    std::bind(&TopologyGlobalPlanner::reConnectorCostCallback, this, std::placeholders::_1, std::placeholders::_2)
+  );
+
   connector_debug_markers_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
     "TopoPlanner/connector_debug_markers",
     rclcpp::QoS(1).transient_local().reliable());
@@ -217,14 +222,6 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
     RCLCPP_WARN(
       node_->get_logger(), "Segmented topology planning failed. Falling back to direct inner planner from start to goal.");
     return makeInnerPlannerPath(start_global, goal_global);
-  }
-
-  if(has_blocked_connector_){
-    for(auto &connector : connectors_){
-      setConnectorCost(connector.id, 1.0);
-    }
-    buildGraph();
-    has_blocked_connector_ = false;
   }
 
   return path;

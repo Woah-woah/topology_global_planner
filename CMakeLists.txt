@@ -97,6 +97,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SwitchRouteMode.srv"
   "srv/QueryTopologyRoute.srv"
   "srv/ExecuteConnectorAction.srv"
+  "srv/RestoreConnectorCost.srv"
   DEPENDENCIES geometry_msgs
 )
 

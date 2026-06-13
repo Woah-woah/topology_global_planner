@@ -9,12 +9,11 @@ void TopologyGlobalPlanner::switchRouteModeCallback(
   const std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Request> request,
   std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Response> response
 ){
-  const std::string &connector_id = request->connector_id;
+  blocked_connector_id = request->connector_id;
 
   for(auto &connector : connectors_){
-    if(connector.id == connector_id){
-      setConnectorCost(connector_id, 999.0);
-      has_blocked_connector_ = true;
+    if(connector.id == blocked_connector_id){
+      connector.cost = 999.0;
       break;
     }
   }
@@ -23,15 +22,28 @@ void TopologyGlobalPlanner::switchRouteModeCallback(
   response->success = true;
 }
 
+void TopologyGlobalPlanner::reConnectorCostCallback(
+  const std::shared_ptr<topology_global_planner::srv::RestoreConnectorCost::Request> request,
+  std::shared_ptr<topology_global_planner::srv::RestoreConnectorCost::Response> response
+){
+  (void)request;
 
-void TopologyGlobalPlanner::setConnectorCost(const std::string &connector_id, double new_cost){
-  for(auto &connector : connectors_){
-    if(connector.id == connector_id){
-      connector.cost = new_cost;
-      return;
+  if(blocked_connector_id.empty()){
+    response->success = false;
+    return;
+  }
+
+  for(auto &connector : connectors_){         //假设只有两条路的情况下，所以只会block一条
+    if(connector.id == blocked_connector_id){
+      connector.cost = 1.0;
+      blocked_connector_id = "";
+      break;
     }
   }
-  return;
+  buildGraph();
+  response->success = true;
 }
+
+
 
 }// namespace topology_global_planner

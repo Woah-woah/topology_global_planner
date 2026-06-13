@@ -19,6 +19,7 @@
 #include "topology_global_planner/srv/switch_route_mode.hpp"
 #include "topology_global_planner/srv/query_topology_route.hpp"
 #include "topology_global_planner/srv/execute_connector_action.hpp"
+#include "topology_global_planner/srv/restore_connector_cost.hpp"
 
 namespace topology_global_planner
 {
@@ -198,19 +199,23 @@ private:
 
 /*-----------------------------------------SERVICE-----------------------------------------*/
   rclcpp::Service<topology_global_planner::srv::SwitchRouteMode>::SharedPtr switch_route_mode_srv_;
+  rclcpp::Service<topology_global_planner::srv::RestoreConnectorCost>::SharedPtr re_connector_cost_srv_;
   rclcpp::Service<topology_global_planner::srv::QueryTopologyRoute>::SharedPtr query_route_service_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr connector_debug_markers_pub_;
-  bool has_blocked_connector_{false};
+  std::string blocked_connector_id;
 
   void switchRouteModeCallback(
     const std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Request> request,
     std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Response> response
   );
+  void reConnectorCostCallback(
+    const std::shared_ptr<topology_global_planner::srv::RestoreConnectorCost::Request> request,
+    std::shared_ptr<topology_global_planner::srv::RestoreConnectorCost::Response> response
+  );
   void handleQueryTopologyRoute(
     const std::shared_ptr<topology_global_planner::srv::QueryTopologyRoute::Request> request,
     std::shared_ptr<topology_global_planner::srv::QueryTopologyRoute::Response> response
   );
-  void setConnectorCost(const std::string &connector_id, double new_cost); //修改cost
   void publishConnectorDebugMarkers();
 
   geometry_msgs::msg::PoseStamped computeConnectorWaitPose(
