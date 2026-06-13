@@ -200,7 +200,7 @@ private:
   rclcpp::Service<topology_global_planner::srv::SwitchRouteMode>::SharedPtr switch_route_mode_srv_;
   rclcpp::Service<topology_global_planner::srv::QueryTopologyRoute>::SharedPtr query_route_service_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr connector_debug_markers_pub_;
-  uint8_t route_mode_{0};
+  bool has_blocked_connector_{false};
 
   void switchRouteModeCallback(
     const std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Request> request,
@@ -210,10 +210,9 @@ private:
     const std::shared_ptr<topology_global_planner::srv::QueryTopologyRoute::Request> request,
     std::shared_ptr<topology_global_planner::srv::QueryTopologyRoute::Response> response
   );
-  void applyModeCost();  //根据mode修改apply cost
   void setConnectorCost(const std::string &connector_id, double new_cost); //修改cost
   void publishConnectorDebugMarkers();
-  
+
   geometry_msgs::msg::PoseStamped computeConnectorWaitPose(
     const Connector & connector,
     const std::string & approach_region_id,

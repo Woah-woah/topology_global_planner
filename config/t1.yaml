@@ -76,8 +76,8 @@ connectors:
       wait_offset: 0.8
       exit_offset: 0.8
       cancel_policy: down_if_safe
-      deformation_timeout: 10.0
-      close_monitor_timeout: 30.0
+      down_timeout: 10.0
+      up_monitor_timeout: 30.0
   - id: C2
     from: R2
     to: R3

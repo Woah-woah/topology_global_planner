@@ -85,6 +85,28 @@ bool TopologyGlobalPlanner::loadTopologyYaml(const std::string & yaml_path)
         return false;
       }
 
+      if (connector_node["action"]) {
+        const auto action = connector_node["action"];
+        connector.has_action = true;
+        connector.action_type = action["type"].as<std::string>();
+        connector.wait_offset = std::max(0.1, action["wait_offset"].as<double>());
+        connector.exit_offset = std::max(0.1, action["exit_offset"].as<double>());
+        connector.cancel_policy = action["cancel_policy"].as<std::string>();
+        connector.down_timeout = action["down_timeout"].as<double>();
+        connector.up_monitor_timeout = action["up_monitor_timeout"].as<double>();
+
+        RCLCPP_INFO(
+          logger_,
+          "Connector %s action type=%s wait_offset=%.2f exit_offset=%.2f down_timeout=%.2f up_monitor_timeout=%.2f cancel_policy=%s",
+          connector.id.c_str(),
+          connector.action_type.c_str(),
+          connector.wait_offset,
+          connector.exit_offset,
+          connector.down_timeout,
+          connector.up_monitor_timeout,
+          connector.cancel_policy.c_str());
+      }
+
       connectors_.push_back(connector);
     }
   } catch (const std::exception & e) {

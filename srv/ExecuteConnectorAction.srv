@@ -11,7 +11,7 @@ geometry_msgs/PoseStamped exit_pose
 float64 timeout
 string cancel_policy
 ---
-#respond
+#response
 bool success
 string message
 string new_state

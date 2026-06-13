@@ -219,6 +219,14 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
     return makeInnerPlannerPath(start_global, goal_global);
   }
 
+  if(has_blocked_connector_){
+    for(auto &connector : connectors_){
+      setConnectorCost(connector.id, 1.0);
+    }
+    buildGraph();
+    has_blocked_connector_ = false;
+  }
+
   return path;
 }
 

@@ -1,4 +1,5 @@
 # request
+string connector_id
 ---
 # response
 bool success
