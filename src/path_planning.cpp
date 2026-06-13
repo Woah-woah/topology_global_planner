@@ -16,6 +16,16 @@
 namespace topology_global_planner
 {
 
+void TopologyGlobalPlanner::setYaw(geometry_msgs::msg::PoseStamped & pose, double yaw) const
+{
+  tf2::Quaternion q;
+  q.setRPY(0.0, 0.0, yaw);
+  pose.pose.orientation.x = q.x();
+  pose.pose.orientation.y = q.y();
+  pose.pose.orientation.z = q.z();
+  pose.pose.orientation.w = q.w();
+}
+
 nav_msgs::msg::Path TopologyGlobalPlanner::makeInnerPlannerPath(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal)

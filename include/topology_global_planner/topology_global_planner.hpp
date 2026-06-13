@@ -99,20 +99,11 @@ private:
     const std::string & goal_region
   ) const;
 
-  std::vector<geometry_msgs::msg::PoseStamped> buildTopologyWaypoints(
-    const geometry_msgs::msg::PoseStamped & start,
-    const geometry_msgs::msg::PoseStamped & goal,
-    const TopologySearchResult & topo_result
-  ) const;
-
   nav_msgs::msg::Path makeInnerPlannerPath(
     const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal
   );
 
-  nav_msgs::msg::Path makeWeakTopologyPath(
-    const std::vector<geometry_msgs::msg::PoseStamped> & waypoints
-  );
 
   nav_msgs::msg::Path makePortalOptimizedTopologyPath(
     const geometry_msgs::msg::PoseStamped & start,
@@ -151,7 +142,6 @@ private:
   geometry_msgs::msg::PoseStamped normalizePoseFrame(
     const geometry_msgs::msg::PoseStamped & pose) const;
 
-  void assignIntermediateOrientations(std::vector<geometry_msgs::msg::PoseStamped> & waypoints) const;
   void setYaw(geometry_msgs::msg::PoseStamped & pose, double yaw) const;
   void appendSegment(nav_msgs::msg::Path & full_path, const nav_msgs::msg::Path & segment) const;
   double euclidean(double x1, double y1, double x2, double y2) const;
