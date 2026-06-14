@@ -57,15 +57,22 @@ connectors:
   - id: C35
     from: R3
     to: R5
-    mode: one_way
+    mode: two_way
     portal:
       start: {x: 9.178567705138823, y: -1.4732243468590764}
       end: {x: 7.2491973956615592, y: -1.5251814197039593}
     cost: 1
+    action:
+      type: down
+      wait_offset: 0.8
+      exit_offset: 0.8
+      cancel_policy: down_if_safe
+      down_timeout: 10.0
+      up_monitor_timeout: 30.0
   - id: C54
     from: R5
     to: R4
-    mode: one_way
+    mode: two_way
     portal:
       start: {x: 14.719284668965221, y: -1.3876992155022518}
       end: {x: 11.756448740728628, y: -1.4198767512441139}
@@ -78,3 +85,10 @@ connectors:
       start: {x: 10.686589549240244, y: -4.532875837380117}
       end: {x: 10.617631852445117, y: -7.6070664496525326}
     cost: 1
+    action:
+      type: down
+      wait_offset: 0.8
+      exit_offset: 0.8
+      cancel_policy: down_if_safe
+      down_timeout: 10.0
+      up_monitor_timeout: 30.0

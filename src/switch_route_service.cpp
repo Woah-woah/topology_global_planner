@@ -29,7 +29,7 @@ void TopologyGlobalPlanner::reConnectorCostCallback(
   (void)request;
 
   if(blocked_connector_id.empty()){
-    response->success = false;
+    response->success = true;
     return;
   }
 
