@@ -105,7 +105,15 @@ private:
 
   TopologySearchResult searchTopology(
     const std::string & start_region,
-    const std::string & goal_region
+    const std::string & goal_region,
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal
+  ) const;
+
+  std::vector<int> optimizeConnectorsForRegionPath(
+    const std::vector<std::string> & region_path,
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal
   ) const;
 
   nav_msgs::msg::Path makeInnerPlannerPath(

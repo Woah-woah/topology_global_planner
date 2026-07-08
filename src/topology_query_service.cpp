@@ -192,7 +192,7 @@ void TopologyGlobalPlanner::handleQueryTopologyRoute(
     return;
   }
 
-  const auto topo_result = searchTopology(start_region, goal_region);
+  const auto topo_result = searchTopology(start_region, goal_region, start, goal);
   if (!topo_result.success) {
     if (fallback_to_inner_planner_) {
       response->success = true;

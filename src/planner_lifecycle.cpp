@@ -200,7 +200,7 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
   }
 
   // 找不到拓扑可通行路径就回退
-  const auto topo_result = searchTopology(start_region, goal_region);
+  const auto topo_result = searchTopology(start_region, goal_region, start_global, goal_global);
   if (!topo_result.success) {
     return fallbackDirectPlan(
       start_global, goal_global,
