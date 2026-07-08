@@ -12,17 +12,17 @@ namespace topology_global_planner
 namespace // 此service用的一些函数，无需声明
 {
 
-Point2D subtractPoints(const Point2D & lhs, const Point2D & rhs)
+Point2D subtractPoints(const Point2D & lhs, const Point2D & rhs)  // 计算向量
 {
   return Point2D{lhs.x - rhs.x, lhs.y - rhs.y};
 }
 
-double pointNorm(const Point2D & point)
+double pointNorm(const Point2D & point) // 计算向量的模长
 {
   return std::hypot(point.x, point.y);
 }
 
-Point2D normalizePoint(const Point2D & point)
+Point2D normalizePoint(const Point2D & point) //计算方向向量
 {
   const double norm = pointNorm(point);
   if (norm <= 1e-9) {
@@ -30,18 +30,6 @@ Point2D normalizePoint(const Point2D & point)
   }
 
   return Point2D{point.x / norm, point.y / norm};
-}
-
-Point2D connectorTraversalDirection(const Connector & connector, const std::string & approach_region_id)
-{
-  Point2D direction = normalizePoint(subtractPoints(connector.portal_end, connector.portal_start));
-
-  if (approach_region_id == connector.to) {
-    direction.x *= -1.0;
-    direction.y *= -1.0;
-  }
-
-  return direction;
 }
 
 geometry_msgs::msg::Point toPointMsg(const Point2D & point)
@@ -54,6 +42,42 @@ geometry_msgs::msg::Point toPointMsg(const Point2D & point)
 }
 
 }  // namespace
+
+
+// 重要：计算通过connector的方向
+Point2D TopologyGlobalPlanner::connectorTraversalDirection(
+  const Connector & connector,
+  const std::string & approach_region_id) const
+{
+  Point2D direction = normalizePoint(subtractPoints(connector.portal_end, connector.portal_start));
+  Point2D portal_center{
+    0.5 * (connector.portal_start.x + connector.portal_end.x),
+    0.5 * (connector.portal_start.y + connector.portal_end.y)
+  };
+
+  if(connector.to == approach_region_id){                //在from和to start和end对应的情况下，解决车从to到from的通行方向问题，而不解决yaml中start和end反向的问题
+    direction.x *= -1.0;
+    direction.y *= -1.0;
+  }
+
+  Point2D wait_point_cal{
+    portal_center.x - direction.x * connector.wait_offset,
+    portal_center.y - direction.y * connector.wait_offset};
+
+  Point2D exit_point_cal{
+    portal_center.x + direction.x * connector.exit_offset,
+    portal_center.y + direction.y * connector.exit_offset};
+
+  // 解决portal的start和end是反的的问题
+  if(
+    !pointInRegionWithTolerance(wait_point_cal.x, wait_point_cal.y, approach_region_id, region_boundary_tolerance_) &&
+    pointInRegionWithTolerance(exit_point_cal.x, exit_point_cal.y, approach_region_id, region_boundary_tolerance_)
+  ){
+    direction.x *= -1.0;
+    direction.y *= -1.0;
+  }
+  return direction;
+}
 
 
 // 算洞口中点

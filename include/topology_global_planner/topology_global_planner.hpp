@@ -231,6 +231,10 @@ private:
   geometry_msgs::msg::PoseStamped computeConnectorCenterPose(
     const Connector & connector,
     const rclcpp::Time & stamp) const;
+  
+  Point2D connectorTraversalDirection(
+  const Connector & connector,
+  const std::string & approach_region_id) const;
 /*-----------------------------------------------------------------------------------------*/
 };
 
