@@ -9,6 +9,12 @@ void TopologyGlobalPlanner::switchRouteModeCallback(
   const std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Request> request,
   std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Response> response
 ){
+  if(!blocked_connector_id.empty()){        // 在单个导航任务中每次运行switch之前初始化，避免在只有两条路可走的时候不能来回切换
+    for(auto &connector : connectors_){
+      connector.cost = 1.0;
+    }
+  }
+
   blocked_connector_id = request->connector_id;
 
   for(auto &connector : connectors_){
@@ -18,7 +24,6 @@ void TopologyGlobalPlanner::switchRouteModeCallback(
     }
   }
   buildGraph();
-
   response->success = true;
 }
 
