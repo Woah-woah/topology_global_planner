@@ -20,6 +20,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 
 set(PLUGIN_LIB_NAME ${PROJECT_NAME}_plugin)
 
@@ -54,6 +55,7 @@ ament_target_dependencies(${PLUGIN_LIB_NAME}
   tf2_ros
   tf2_geometry_msgs
   visualization_msgs
+  std_msgs
 )
 
 pluginlib_export_plugin_description_file(nav2_core topology_global_planner_plugin.xml)
@@ -91,6 +93,7 @@ ament_export_dependencies(
   tf2_ros
   tf2_geometry_msgs
   visualization_msgs
+  std_msgs
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}

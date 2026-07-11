@@ -109,8 +109,7 @@ void TopologyGlobalPlanner::configure(
 
   query_route_service_ = node_->create_service<topology_global_planner::srv::QueryTopologyRoute>(
     "TopoPlanner/query_topology_route",
-    std::bind(
-      &TopologyGlobalPlanner::handleQueryTopologyRoute, this, std::placeholders::_1, std::placeholders::_2));
+    std::bind(&TopologyGlobalPlanner::handleQueryTopologyRoute, this, std::placeholders::_1, std::placeholders::_2));
   
   switch_route_mode_srv_ = node_->create_service<topology_global_planner::srv::SwitchRouteMode>(
     "TopoPlanner/switch_route_mode",
@@ -125,6 +124,11 @@ void TopologyGlobalPlanner::configure(
   connector_debug_markers_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
     "TopoPlanner/connector_debug_markers",
     rclcpp::QoS(1).transient_local().reliable());
+
+  current_region_pub_ = node_->create_publisher<std_msgs::msg::String>(
+    "TopoPlanner/current_region",
+    rclcpp::QoS(rclcpp::KeepLast(10))
+  );
 }
 
 void TopologyGlobalPlanner::cleanup()
@@ -139,7 +143,9 @@ void TopologyGlobalPlanner::cleanup()
   }
   query_route_service_.reset();
   switch_route_mode_srv_.reset();
+  re_connector_cost_srv_.reset();
   connector_debug_markers_pub_.reset();
+  current_region_pub_.reset();
   inner_planner_.reset();
   inner_planner_configured_ = false;
   regions_.clear();
@@ -182,6 +188,11 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
   // 判断起终点在哪个区域
   const std::string start_region = findRegion(start_global.pose.position.x, start_global.pose.position.y);
   const std::string goal_region = findRegion(goal_global.pose.position.x, goal_global.pose.position.y);
+
+  // 发布当前所在的region
+  std_msgs::msg::String current_region_msg;
+  current_region_msg.data = start_region;
+  current_region_pub_->publish(current_region_msg);
 
   // 起点终点有一个不在region内就回退
   if (start_region.empty() || goal_region.empty()) {

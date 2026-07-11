@@ -15,6 +15,7 @@
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "tf2_ros/buffer.h"
 #include "visualization_msgs/msg/marker_array.hpp"
+#include "std_msgs/msg/string.hpp"
 
 #include "topology_global_planner/srv/switch_route_mode.hpp"
 #include "topology_global_planner/srv/query_topology_route.hpp"
@@ -102,6 +103,8 @@ private:
   bool pathInsideRegionWithTolerance(const nav_msgs::msg::Path & path, const std::string & region_id, double tolerance) const;
   double distancePointToSegment(const Point2D & p, const Point2D & a, const Point2D & b) const;
   Point2D computeCentroid(const std::vector<Point2D> & polygon) const;
+
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr current_region_pub_;
 
   TopologySearchResult searchTopology(
     const std::string & start_region,

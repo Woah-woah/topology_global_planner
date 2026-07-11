@@ -114,8 +114,6 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal) const
 {
-  constexpr double EPS = 1e-6;  // 浮点数比较误差
-
   if (region_path.size() < 2) {
     return {};                   // 区域路径少于两个区域，那就没有 connector 可选
   }
@@ -136,20 +134,19 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
     for (size_t i = 0; i < connectors_.size(); i++) {
       const auto & c = connectors_[i];
 
-      const bool forward = (c.from == from_region) && (c.to == to_region); // connector的from和to的顺序是符合我要通过region的方向的
-
+      // connector的from和to的顺序是符合我要通过region的方向的
+      const bool forward = (c.from == from_region) && (c.to == to_region);
       const bool reverse = (c.mode == "two_way") && (c.from == to_region) && (c.to == from_region);
-
       if (!forward && !reverse) {
         continue;
       }
 
       // 第一优先级：connector.cost
-      if (c.cost < min_connector_cost - EPS) {
+      if (c.cost < min_connector_cost - 1e-6) {
         min_connector_cost = c.cost;
         candidates.clear();
         candidates.push_back(static_cast<int>(i));
-      } else if (std::abs(c.cost - min_connector_cost) <= EPS) {
+      } else if (std::abs(c.cost - min_connector_cost) <= 1e-6) {
         candidates.push_back(static_cast<int>(i));
       }
     }
@@ -190,7 +187,7 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
 
   std::vector<std::vector<double>> dp(layer_count);
   std::vector<std::vector<int>> parent(layer_count);
-
+         
   for (size_t layer = 0; layer < layer_count; layer++) {
     dp[layer].assign(layers[layer].size(), std::numeric_limits<double>::infinity());
     parent[layer].assign(layers[layer].size(), -1);
