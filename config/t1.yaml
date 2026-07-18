@@ -71,13 +71,7 @@ connectors:
       start: {x: 1.5213221311569214, y: -6.6476097106933594}
       end: {x: 1.5059331655502319, y: -7.173975944519043}
     cost: 1
-    action:
-      type: down
-      wait_offset: 0.8
-      exit_offset: 0.8
-      cancel_policy: down_if_safe
-      down_timeout: 10.0
-      up_monitor_timeout: 30.0
+    action: true
   - id: C2
     from: R2
     to: R3
@@ -86,3 +80,4 @@ connectors:
       start: {x: 20.021083831787109, y: 3.2973237037658691}
       end: {x: 17.996547698974609, y: 3.2693405151367188}
     cost: 1
+    action: true

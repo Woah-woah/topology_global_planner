@@ -55,12 +55,6 @@ void TopologyGlobalPlanner::configure(
   nav2_util::declare_parameter_if_not_declared(
     node_, name_ + ".max_nearest_region_distance", rclcpp::ParameterValue(1.0));
   nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".portal_sample_count", rclcpp::ParameterValue(5));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".portal_adaptive_sampling", rclcpp::ParameterValue(true));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".portal_refine_sample_count", rclcpp::ParameterValue(5));
-  nav2_util::declare_parameter_if_not_declared(
     node_, name_ + ".enforce_region_constraint", rclcpp::ParameterValue(true));
   nav2_util::declare_parameter_if_not_declared(
     node_, name_ + ".region_constraint_tolerance", rclcpp::ParameterValue(0.15));
@@ -77,9 +71,6 @@ void TopologyGlobalPlanner::configure(
   node_->get_parameter(name_ + ".transform_tolerance", transform_tolerance_);
   node_->get_parameter(name_ + ".duplicate_pose_tolerance", duplicate_pose_tolerance_);
   node_->get_parameter(name_ + ".max_nearest_region_distance", max_nearest_region_distance_);
-  node_->get_parameter(name_ + ".portal_sample_count", portal_sample_count_);
-  node_->get_parameter(name_ + ".portal_adaptive_sampling", portal_adaptive_sampling_);
-  node_->get_parameter(name_ + ".portal_refine_sample_count", portal_refine_sample_count_);
   node_->get_parameter(name_ + ".enforce_region_constraint", enforce_region_constraint_);
   node_->get_parameter(name_ + ".region_constraint_tolerance", region_constraint_tolerance_);
   node_->get_parameter(name_ + ".inner_planner_plugin", inner_planner_plugin_);
@@ -106,10 +97,6 @@ void TopologyGlobalPlanner::configure(
     RCLCPP_WARN(
       node_->get_logger(), "Topology disabled or topology_yaml is empty. Inner planner will be used directly.");
   }
-
-  query_route_service_ = node_->create_service<topology_global_planner::srv::QueryTopologyRoute>(
-    "TopoPlanner/query_topology_route",
-    std::bind(&TopologyGlobalPlanner::handleQueryTopologyRoute, this, std::placeholders::_1, std::placeholders::_2));
   
   switch_route_mode_srv_ = node_->create_service<topology_global_planner::srv::SwitchRouteMode>(
     "TopoPlanner/switch_route_mode",
@@ -121,14 +108,6 @@ void TopologyGlobalPlanner::configure(
     std::bind(&TopologyGlobalPlanner::reConnectorCostCallback, this, std::placeholders::_1, std::placeholders::_2)
   );
 
-  connector_debug_markers_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
-    "TopoPlanner/connector_debug_markers",
-    rclcpp::QoS(1).transient_local().reliable());
-
-  current_region_pub_ = node_->create_publisher<std_msgs::msg::String>(
-    "TopoPlanner/current_region",
-    rclcpp::QoS(rclcpp::KeepLast(10))
-  );
 }
 
 void TopologyGlobalPlanner::cleanup()
@@ -141,11 +120,8 @@ void TopologyGlobalPlanner::cleanup()
     }
     inner_planner_->cleanup();
   }
-  query_route_service_.reset();
   switch_route_mode_srv_.reset();
   re_connector_cost_srv_.reset();
-  connector_debug_markers_pub_.reset();
-  current_region_pub_.reset();
   inner_planner_.reset();
   inner_planner_configured_ = false;
   regions_.clear();
@@ -188,11 +164,6 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
   // 判断起终点在哪个区域
   const std::string start_region = findRegion(start_global.pose.position.x, start_global.pose.position.y);
   const std::string goal_region = findRegion(goal_global.pose.position.x, goal_global.pose.position.y);
-
-  // 发布当前所在的region
-  std_msgs::msg::String current_region_msg;
-  current_region_msg.data = start_region;
-  current_region_pub_->publish(current_region_msg);
 
   // 起点终点有一个不在region内就回退
   if (start_region.empty() || goal_region.empty()) {

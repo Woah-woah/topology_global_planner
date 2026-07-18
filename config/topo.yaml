@@ -84,16 +84,10 @@ connectors:
     to: R1
     mode: two_way
     portal:
-      start: {x: 1.4674974679946899, y: -6.3149447441101074}
-      end: {x: 1.4838848114013672, y: -7.4652853012084961}
+      start: {x: 1.4838848114013672, y: -7.4652853012084961}
+      end: {x: 1.4674974679946899, y: -6.3149447441101074}
     cost: 1
-    action:
-      type: down
-      wait_offset: 0.5
-      exit_offset: 0.8
-      cancel_policy: down_if_safe
-      down_timeout: 10.0
-      up_monitor_timeout: 30.0
+    action: down
 
   - id: C2
     from: R2
@@ -103,13 +97,7 @@ connectors:
       start: {x: 10.467350006103516, y: -5.1340656280517578}
       end: {x: 12.129592895507812, y: -4.2688775062561035}
     cost: 1
-    action:
-      type: down
-      wait_offset: 0.8
-      exit_offset: 0.8
-      cancel_policy: down_if_safe
-      down_timeout: 10.0
-      up_monitor_timeout: 30.0
+    action: down
 
   - id: C3
     from: R2
@@ -119,13 +107,7 @@ connectors:
       start: {x: 10.574053764343262, y: 1.9468483924865723}
       end: {x: 12.32628345489502, y: 2.1679649353027344}
     cost: 1
-    action:
-      type: down
-      wait_offset: 0.8
-      exit_offset: 0.8
-      cancel_policy: down_if_safe
-      down_timeout: 10.0
-      up_monitor_timeout: 30.0
+    action: down
 
   - id: C4
     from: R3
@@ -135,10 +117,4 @@ connectors:
       start: {x: 20.881526947021484, y: 4.7598085403442383}
       end: {x: 20.899534225463867, y: 3.2936172485351562}
     cost: 1
-    action:
-      type: down
-      wait_offset: 0.8
-      exit_offset: 0.8
-      cancel_policy: down_if_safe
-      down_timeout: 10.0
-      up_monitor_timeout: 30.0
+    action: down

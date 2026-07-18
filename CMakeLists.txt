@@ -31,7 +31,6 @@ add_library(${PLUGIN_LIB_NAME} SHARED
   src/topology_search.cpp
   src/portal_optimizer.cpp
   src/path_planning.cpp
-  src/topology_query_service.cpp
   src/switch_route_service.cpp
 )
 
@@ -98,8 +97,6 @@ ament_export_dependencies(
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SwitchRouteMode.srv"
-  "srv/QueryTopologyRoute.srv"
-  "srv/ExecuteConnectorAction.srv"
   "srv/RestoreConnectorCost.srv"
   DEPENDENCIES geometry_msgs
 )

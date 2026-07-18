@@ -18,8 +18,6 @@
 #include "std_msgs/msg/string.hpp"
 
 #include "topology_global_planner/srv/switch_route_mode.hpp"
-#include "topology_global_planner/srv/query_topology_route.hpp"
-#include "topology_global_planner/srv/execute_connector_action.hpp"
 #include "topology_global_planner/srv/restore_connector_cost.hpp"
 
 namespace topology_global_planner
@@ -48,14 +46,7 @@ struct Connector
   Point2D portal_start;
   Point2D portal_end;
   double cost{1.0};
-//-----------------------------
-  bool has_action{false};
-  std::string action_type;
-  double wait_offset{0.8};
-  double exit_offset{0.8};
-  std::string cancel_policy{"up_if_safe"};
-  double down_timeout{10.0};
-  double up_monitor_timeout{30.0};
+  std::string action;
 };
 
 struct TopologySearchResult
@@ -104,7 +95,17 @@ private:
   double distancePointToSegment(const Point2D & p, const Point2D & a, const Point2D & b) const;
   Point2D computeCentroid(const std::vector<Point2D> & polygon) const;
 
-  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr current_region_pub_;
+  nav_msgs::msg::Path makeStraightConnectorPath(
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal,
+    double resolution
+  ) const;
+
+  nav_msgs::msg::Path makePortalOptimizedTopologyPath(
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal,
+    const TopologySearchResult & topo_result
+  );
 
   TopologySearchResult searchTopology(
     const std::string & start_region,
@@ -124,35 +125,9 @@ private:
     const geometry_msgs::msg::PoseStamped & goal
   );
 
-
-  nav_msgs::msg::Path makePortalOptimizedTopologyPath(
-    const geometry_msgs::msg::PoseStamped & start,
-    const geometry_msgs::msg::PoseStamped & goal,
-    const TopologySearchResult & topo_result
-  );
-
-  std::vector<geometry_msgs::msg::PoseStamped> sampleConnectorPoses(
-    const Connector & connector,
-    const rclcpp::Time & stamp
-  ) const;
-
-  std::vector<geometry_msgs::msg::PoseStamped> sampleConnectorPosesAround(
-    const Connector & connector,
-    const rclcpp::Time & stamp,
-    double center_t,
-    double half_width,
-    int sample_count
-  ) const;
-
-  double projectionTOnConnector(
-    const Connector & connector,
-    const geometry_msgs::msg::PoseStamped & pose) const;
-
   geometry_msgs::msg::PoseStamped makePoseFromPoint(
     const Point2D & point,
     const rclcpp::Time & stamp) const;
-
-  double pathLength(const nav_msgs::msg::Path & path) const;
 
   nav_msgs::msg::Path fallbackDirectPlan(
     const geometry_msgs::msg::PoseStamped & start,
@@ -191,11 +166,9 @@ private:
   double transform_tolerance_{0.1};
   double duplicate_pose_tolerance_{0.02};
   double max_nearest_region_distance_{1.0};
-  int portal_sample_count_{5};
-  bool portal_adaptive_sampling_{true};
-  int portal_refine_sample_count_{5};
   bool enforce_region_constraint_{true};
   double region_constraint_tolerance_{0.15};
+  double no_action_line_resolution_{0.10};
 
   std::string inner_planner_plugin_{"nav2_navfn_planner/NavfnPlanner"};
   std::string inner_planner_name_{"InnerPlanner"};
@@ -211,8 +184,6 @@ private:
 /*-----------------------------------------SERVICE-----------------------------------------*/
   rclcpp::Service<topology_global_planner::srv::SwitchRouteMode>::SharedPtr switch_route_mode_srv_;
   rclcpp::Service<topology_global_planner::srv::RestoreConnectorCost>::SharedPtr re_connector_cost_srv_;
-  rclcpp::Service<topology_global_planner::srv::QueryTopologyRoute>::SharedPtr query_route_service_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr connector_debug_markers_pub_;
   std::string blocked_connector_id;
 
   void switchRouteModeCallback(
@@ -223,29 +194,7 @@ private:
     const std::shared_ptr<topology_global_planner::srv::RestoreConnectorCost::Request> request,
     std::shared_ptr<topology_global_planner::srv::RestoreConnectorCost::Response> response
   );
-  void handleQueryTopologyRoute(
-    const std::shared_ptr<topology_global_planner::srv::QueryTopologyRoute::Request> request,
-    std::shared_ptr<topology_global_planner::srv::QueryTopologyRoute::Response> response
-  );
-  void publishConnectorDebugMarkers();
 
-  geometry_msgs::msg::PoseStamped computeConnectorWaitPose(
-    const Connector & connector,
-    const std::string & approach_region_id,
-    const rclcpp::Time & stamp) const;
-
-  geometry_msgs::msg::PoseStamped computeConnectorExitPose(
-    const Connector & connector,
-    const std::string & approach_region_id,
-    const rclcpp::Time & stamp) const;
-
-  geometry_msgs::msg::PoseStamped computeConnectorCenterPose(
-    const Connector & connector,
-    const rclcpp::Time & stamp) const;
-  
-  Point2D connectorTraversalDirection(
-  const Connector & connector,
-  const std::string & approach_region_id) const;
 /*-----------------------------------------------------------------------------------------*/
 };
 
