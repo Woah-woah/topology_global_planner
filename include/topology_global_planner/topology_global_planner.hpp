@@ -155,6 +155,9 @@ private:
   rclcpp::Logger logger_{rclcpp::get_logger("TopologyGlobalPlanner")};
   rclcpp::Clock::SharedPtr clock_;
 
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr connector_debug_markers_pub_;
+  void publishConnectorDebugMarkers();
+
   std::string name_;
   std::string global_frame_;
 

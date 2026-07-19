@@ -95,12 +95,7 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
     topo_result.connector_indices.size() + 1 !=
     topo_result.region_path.size())
   {
-    RCLCPP_ERROR(
-      logger_,
-      "Invalid topology result: regions=%zu connectors=%zu",
-      topo_result.region_path.size(),
-      topo_result.connector_indices.size());
-
+    RCLCPP_ERROR(logger_, "Invalid topology result: regions=%zu connectors=%zu", topo_result.region_path.size(), topo_result.connector_indices.size());
     return makeEmptyPath();
   }
 
@@ -112,11 +107,7 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
 
     if (connector_index < 0 || static_cast<size_t>(connector_index) >= connectors_.size())
     {
-      RCLCPP_ERROR(
-        logger_,
-        "Invalid connector index: %d",
-        connector_index);
-
+      RCLCPP_ERROR(logger_, "Invalid connector index: %d", connector_index);
       return makeEmptyPath();
     }
 
@@ -139,16 +130,6 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
     {
       wait_point = connector.portal_end;
       exit_point = connector.portal_start;
-    }
-    else {
-      RCLCPP_ERROR(
-        logger_,
-        "Connector '%s' does not match transition '%s' -> '%s'",
-        connector.id.c_str(),
-        current_region.c_str(),
-        next_region.c_str());
-
-      return makeEmptyPath();
     }
 
     auto wait_pose = makePoseFromPoint(wait_point, full_path.header.stamp);
@@ -202,11 +183,7 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
       topo_result.region_path.back(),
       region_constraint_tolerance_))
   {
-    RCLCPP_WARN(
-      logger_,
-      "Final segment leaves region '%s'",
-      topo_result.region_path.back().c_str());
-
+    RCLCPP_WARN(logger_, "Final segment leaves region '%s'", topo_result.region_path.back().c_str());
     return makeEmptyPath();
   }
 

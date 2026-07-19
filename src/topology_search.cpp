@@ -108,40 +108,37 @@ TopologySearchResult TopologyGlobalPlanner::searchTopology(
 }
 
 
-// 适用于区域间多connector的情况
+// 适用于区域间多 connector 的情况
 std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
   const std::vector<std::string> & region_path,
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal) const
 {
   if (region_path.size() < 2) {
-    return {};                   // 区域路径少于两个区域，那就没有 connector 可选
+    return {};
   }
 
-  const size_t step_count = region_path.size() - 1;   // e.g.有R1->R2, R2->R3两段
-
-  std::vector<std::vector<int>> layers;       // e.g.layers[0]=['C1', 'C2'], layers[1]=['C3']
+  const size_t step_count = region_path.size() - 1;
+  std::vector<std::vector<int>> layers;
   layers.reserve(step_count);
 
-  // 每一段 region_path 收集候选 connector, 用layers保存
-  for (size_t step = 0; step < step_count; step++) {
+  // 每段区域转移收集 cost 最低的候选 Connector
+  for (size_t step = 0; step < step_count; ++step) {
     const std::string & from_region = region_path[step];
     const std::string & to_region = region_path[step + 1];
 
     double min_connector_cost = std::numeric_limits<double>::infinity();
     std::vector<int> candidates;
 
-    for (size_t i = 0; i < connectors_.size(); i++) {
+    for (size_t i = 0; i < connectors_.size(); ++i) {
       const auto & c = connectors_[i];
 
-      // connector的from和to的顺序是符合我要通过region的方向的
-      const bool forward = (c.from == from_region) && (c.to == to_region);
-      const bool reverse = (c.mode == "two_way") && (c.from == to_region) && (c.to == from_region);
+      const bool forward = c.from == from_region && c.to == to_region;
+      const bool reverse = c.mode == "two_way" && c.from == to_region && c.to == from_region;
       if (!forward && !reverse) {
         continue;
       }
 
-      // 第一优先级：connector.cost
       if (c.cost < min_connector_cost - 1e-6) {
         min_connector_cost = c.cost;
         candidates.clear();
@@ -158,56 +155,82 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
     layers.push_back(candidates);
   }
 
-  auto connector_center = [this](int idx) -> Point2D {
+  // 根据本次区域通过方向获得 wait 和 exit
+  auto get_wait_exit = [this, &region_path](size_t step, int idx, Point2D & wait, Point2D & exit) -> bool
+  {
     const auto & c = connectors_[static_cast<size_t>(idx)];
-    return Point2D{
-      0.5 * (c.portal_start.x + c.portal_end.x),
-      0.5 * (c.portal_start.y + c.portal_end.y)
-    };
+    const auto & current_region = region_path[step];
+    const auto & next_region = region_path[step + 1];
+
+    if (c.from == current_region && c.to == next_region) {
+      wait = c.portal_start;
+      exit = c.portal_end;
+      return true;
+    }
+
+    if (c.mode == "two_way" && c.to == current_region && c.from == next_region) {
+      wait = c.portal_end;
+      exit = c.portal_start;
+      return true;
+    }
+
+    return false;
   };
 
-  auto pose_to_center_dist =
-    [this, &connector_center](const geometry_msgs::msg::PoseStamped & pose, int idx) -> double {
-      const auto center = connector_center(idx);
-      return euclidean(
-        pose.pose.position.x,
-        pose.pose.position.y,
-        center.x,
-        center.y);
-    };
+  auto point_dist = [this](const Point2D & a, const Point2D & b) {
+    return euclidean(a.x, a.y, b.x, b.y);
+  };
 
-  auto center_to_center_dist =
-    [this, &connector_center](int lhs_idx, int rhs_idx) -> double {
-      const auto lhs = connector_center(lhs_idx);
-      const auto rhs = connector_center(rhs_idx);
-      return euclidean(lhs.x, lhs.y, rhs.x, rhs.y);
-    };
+  auto pose_point_dist = [this](
+    const geometry_msgs::msg::PoseStamped & pose,
+    const Point2D & point)
+  {
+    return euclidean(pose.pose.position.x, pose.pose.position.y, point.x, point.y);
+  };
 
   const size_t layer_count = layers.size();
 
   std::vector<std::vector<double>> dp(layer_count);
   std::vector<std::vector<int>> parent(layer_count);
-         
-  for (size_t layer = 0; layer < layer_count; layer++) {
+
+  for (size_t layer = 0; layer < layer_count; ++layer) {
     dp[layer].assign(layers[layer].size(), std::numeric_limits<double>::infinity());
     parent[layer].assign(layers[layer].size(), -1);
   }
 
-  // 第一层：start -> 第一个 connector
-  for (size_t j = 0; j < layers[0].size(); j++) {
-    dp[0][j] = pose_to_center_dist(start, layers[0][j]);
+  // 第一层：start -> wait -> exit
+  for (size_t j = 0; j < layers[0].size(); ++j) {
+    Point2D wait, exit;
+    if (!get_wait_exit(0, layers[0][j], wait, exit)) {
+      continue;
+    }
+
+    dp[0][j] = pose_point_dist(start, wait) + point_dist(wait, exit);
   }
 
-  // 中间层：connector -> connector
+  // 中间层：上一个 exit -> 当前 wait -> 当前 exit
   for (size_t layer = 1; layer < layer_count; ++layer) {
     for (size_t j = 0; j < layers[layer].size(); ++j) {
       const int cur_idx = layers[layer][j];
 
-      for (size_t k = 0; k < layers[layer - 1].size(); ++k) {
-        const int prev_idx = layers[layer - 1][k];
+      Point2D cur_wait, cur_exit;
+      if (!get_wait_exit(layer, cur_idx, cur_wait, cur_exit)) {
+        continue;
+      }
 
-        const double candidate =
-          dp[layer - 1][k] + center_to_center_dist(prev_idx, cur_idx);
+      for (size_t k = 0; k < layers[layer - 1].size(); ++k) {
+        if (!std::isfinite(dp[layer - 1][k])) {
+          continue;
+        }
+
+        const int prev_idx = layers[layer - 1][k];
+        Point2D prev_wait, prev_exit;
+
+        if (!get_wait_exit(layer - 1, prev_idx, prev_wait, prev_exit)) {
+          continue;
+        }
+
+        const double candidate = dp[layer - 1][k] + point_dist(prev_exit, cur_wait) + point_dist(cur_wait, cur_exit);
 
         if (candidate < dp[layer][j]) {
           dp[layer][j] = candidate;
@@ -217,15 +240,22 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
     }
   }
 
-  // 最后一层：最后一个 connector -> goal
+  // 最后一层：最后一个 exit -> goal
   double best_total = std::numeric_limits<double>::infinity();
   int best_last = -1;
-
   const size_t last_layer = layer_count - 1;
 
   for (size_t j = 0; j < layers[last_layer].size(); ++j) {
-    const double total =
-      dp[last_layer][j] + pose_to_center_dist(goal, layers[last_layer][j]);
+    if (!std::isfinite(dp[last_layer][j])) {
+      continue;
+    }
+
+    Point2D wait, exit;
+    if (!get_wait_exit(last_layer, layers[last_layer][j], wait, exit)) {
+      continue;
+    }
+
+    const double total = dp[last_layer][j] + pose_point_dist(goal, exit);
 
     if (total < best_total) {
       best_total = total;
@@ -237,14 +267,12 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
     return {};
   }
 
-  // 回溯选中的 connector
+  // 回溯选中的 Connector
   std::vector<int> selected(layer_count, -1);
-
   int cur = best_last;
-  for (int layer = static_cast<int>(layer_count) - 1; layer >= 0; --layer) {
-    selected[static_cast<size_t>(layer)] =
-      layers[static_cast<size_t>(layer)][static_cast<size_t>(cur)];
 
+  for (int layer = static_cast<int>(layer_count) - 1; layer >= 0; --layer) {
+    selected[static_cast<size_t>(layer)] = layers[static_cast<size_t>(layer)][static_cast<size_t>(cur)];
     cur = parent[static_cast<size_t>(layer)][static_cast<size_t>(cur)];
 
     if (layer > 0 && cur < 0) {

@@ -77,6 +77,21 @@ void TopologyGlobalPlanner::configure(
   node_->get_parameter(name_ + ".inner_planner_name", inner_planner_name_);
 
 
+  switch_route_mode_srv_ = node_->create_service<topology_global_planner::srv::SwitchRouteMode>(
+    "TopoPlanner/switch_route_mode",
+    std::bind(&TopologyGlobalPlanner::switchRouteModeCallback, this, std::placeholders::_1, std::placeholders::_2)
+  );
+
+  re_connector_cost_srv_ = node_->create_service<topology_global_planner::srv::RestoreConnectorCost>(
+    "TopoPlanner/re_connector_cost",
+    std::bind(&TopologyGlobalPlanner::reConnectorCostCallback, this, std::placeholders::_1, std::placeholders::_2)
+  );
+
+  connector_debug_markers_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
+    "TopoPlanner/connector_debug_markers",
+    rclcpp::QoS(1).transient_local().reliable()
+  );
+
   try {
     inner_planner_ = inner_planner_loader_.createUniqueInstance(inner_planner_plugin_);
     inner_planner_->configure(parent, inner_planner_name_, tf_, costmap_ros_);
@@ -89,6 +104,7 @@ void TopologyGlobalPlanner::configure(
   if (use_topology_ && !topology_yaml_.empty()) {
     if (loadTopologyYaml(topology_yaml_)) {            // 从yaml中读取regions connectors 失败回退
       buildGraph();
+      publishConnectorDebugMarkers();
     } else {
       RCLCPP_WARN(node_->get_logger(), "Failed to load topology yaml. Topology layer will be bypassed; inner planner will be used directly.");
       use_topology_ = false;
@@ -98,16 +114,6 @@ void TopologyGlobalPlanner::configure(
       node_->get_logger(), "Topology disabled or topology_yaml is empty. Inner planner will be used directly.");
   }
   
-  switch_route_mode_srv_ = node_->create_service<topology_global_planner::srv::SwitchRouteMode>(
-    "TopoPlanner/switch_route_mode",
-    std::bind(&TopologyGlobalPlanner::switchRouteModeCallback, this, std::placeholders::_1, std::placeholders::_2)
-  );
-
-  re_connector_cost_srv_ = node_->create_service<topology_global_planner::srv::RestoreConnectorCost>(
-    "TopoPlanner/re_connector_cost",
-    std::bind(&TopologyGlobalPlanner::reConnectorCostCallback, this, std::placeholders::_1, std::placeholders::_2)
-  );
-
 }
 
 void TopologyGlobalPlanner::cleanup()
@@ -122,6 +128,7 @@ void TopologyGlobalPlanner::cleanup()
   }
   switch_route_mode_srv_.reset();
   re_connector_cost_srv_.reset();
+  connector_debug_markers_pub_.reset();
   inner_planner_.reset();
   inner_planner_configured_ = false;
   regions_.clear();
