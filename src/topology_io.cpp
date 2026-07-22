@@ -141,11 +141,8 @@ void TopologyGlobalPlanner::publishConnectorDebugMarkers()
     if (length < 1e-6) continue;
 
     if (connector.mode == "two_way") {
-      const double nx = -dy / length * 0.05;
-      const double ny = dx / length * 0.05;
-
-      addArrow(connector.portal_start, connector.portal_end, nx, ny, 0.0F, 1.0F, 0.0F);
-      addArrow(connector.portal_end, connector.portal_start, -nx, -ny, 0.0F, 1.0F, 0.0F);
+      addArrow(connector.portal_start, connector.portal_end, 0.0, 0.0, 0.0F, 1.0F, 0.0F);
+      addArrow(connector.portal_end, connector.portal_start, 0.0, 0.0, 0.0F, 1.0F, 0.0F);
     } else if (connector.mode == "one_way") {
       addArrow(connector.portal_start, connector.portal_end, 0.0, 0.0, 1.0F, 0.45F, 0.0F);
     }

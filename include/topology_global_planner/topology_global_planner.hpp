@@ -16,6 +16,7 @@
 #include "tf2_ros/buffer.h"
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "std_msgs/msg/string.hpp"
+#include "std_msgs/msg/bool.hpp"
 
 #include "topology_global_planner/srv/switch_route_mode.hpp"
 #include "topology_global_planner/srv/restore_connector_cost.hpp"
@@ -156,7 +157,10 @@ private:
   rclcpp::Clock::SharedPtr clock_;
 
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr connector_debug_markers_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr need_action_pub_;
+  rclcpp::TimerBase::SharedPtr timer_;
   void publishConnectorDebugMarkers();
+  void publishNeedAction();
 
   std::string name_;
   std::string global_frame_;
@@ -183,6 +187,12 @@ private:
   std::vector<Region> regions_;
   std::vector<Connector> connectors_;
   std::unordered_map<std::string, std::vector<DirectedEdge>> graph_;
+
+  Point2D active_wait_point_;
+  Point2D active_exit_point_;
+  bool is_on_connector_{false};
+  std::string active_region_id_;
+  bool need_action_{false};
 
 /*-----------------------------------------SERVICE-----------------------------------------*/
   rclcpp::Service<topology_global_planner::srv::SwitchRouteMode>::SharedPtr switch_route_mode_srv_;

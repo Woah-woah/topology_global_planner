@@ -92,6 +92,13 @@ void TopologyGlobalPlanner::configure(
     rclcpp::QoS(1).transient_local().reliable()
   );
 
+  timer_ = node_->create_wall_timer(std::chrono::milliseconds(100), std::bind(&TopologyGlobalPlanner::publishNeedAction, this));
+
+  need_action_pub_ = node_->create_publisher<std_msgs::msg::Bool>(
+    "TopoPlanner/need_action",
+    rclcpp::QoS(1).transient_local().reliable()
+  );
+
   try {
     inner_planner_ = inner_planner_loader_.createUniqueInstance(inner_planner_plugin_);
     inner_planner_->configure(parent, inner_planner_name_, tf_, costmap_ros_);
@@ -129,6 +136,8 @@ void TopologyGlobalPlanner::cleanup()
   switch_route_mode_srv_.reset();
   re_connector_cost_srv_.reset();
   connector_debug_markers_pub_.reset();
+  need_action_pub_.reset();
+  timer_.reset();
   inner_planner_.reset();
   inner_planner_configured_ = false;
   regions_.clear();
@@ -161,27 +170,31 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
     throw std::runtime_error("Inner planner is null in TopologyGlobalPlanner::createPlan");
   }
 
+  publishNeedAction();
+  
   const auto start_global = normalizePoseFrame(start);
   const auto goal_global = normalizePoseFrame(goal);
-
+  
   if (!use_topology_ || regions_.empty() || connectors_.empty()) {
     return makeInnerPlannerPath(start_global, goal_global);
   }
-
+  
   // 判断起终点在哪个区域
   const std::string start_region = findRegion(start_global.pose.position.x, start_global.pose.position.y);
   const std::string goal_region = findRegion(goal_global.pose.position.x, goal_global.pose.position.y);
 
-  // 起点终点有一个不在region内就回退
-  if (start_region.empty() || goal_region.empty()) {
-    return fallbackDirectPlan(
-      start_global, goal_global,
-      "start or goal is outside all topology regions: start_region='" + start_region +
-      "', goal_region='" + goal_region + "'");
-  }
+  // // 起点终点有一个不在region内就回退
+  // if (start_region.empty() || goal_region.empty()) {
+  //   need_action_ = false;
+  //   return fallbackDirectPlan(
+  //     start_global, goal_global,
+  //     "start or goal is outside all topology regions: start_region='" + start_region +
+  //     "', goal_region='" + goal_region + "'");
+  // }
 
-  // 起终点在同一个region内就回退
-  if (start_region == goal_region) {
+  // 起终点在同一个region内且当前不在connector上就回退
+  if (start_region == goal_region && !is_on_connector_) {
+    need_action_ = false;
     RCLCPP_DEBUG(
       node_->get_logger(), "Start and goal are in the same region '%s'. Using inner planner directly.",
       start_region.c_str());
@@ -191,11 +204,13 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
   // 找不到拓扑可通行路径就回退
   const auto topo_result = searchTopology(start_region, goal_region, start_global, goal_global);
   if (!topo_result.success) {
+    need_action_ = false;
     return fallbackDirectPlan(
       start_global, goal_global,
       "no topology route from '" + start_region + "' to '" + goal_region + "'");
   }
 
+  
   std::string region_log;
   for (const auto & r : topo_result.region_path) {
     if (!region_log.empty()) {
@@ -204,18 +219,28 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
     region_log += r;
   }
   RCLCPP_INFO(node_->get_logger(), "Topology route: %s", region_log.c_str());
-
+  
   auto path = makePortalOptimizedTopologyPath(start_global, goal_global, topo_result);
-
-  if (path.poses.empty() && fallback_to_inner_planner_) {
-    RCLCPP_WARN(
-      node_->get_logger(), "Segmented topology planning failed. Falling back to direct inner planner from start to goal.");
+  
+  if (path.poses.empty() && fallback_to_inner_planner_) {  // fallback始终为true的情况
+    RCLCPP_WARN(node_->get_logger(), "Segmented topology planning failed. Falling back to direct inner planner from start to goal.");
     return makeInnerPlannerPath(start_global, goal_global);
+  } else {
+    /* 
+    1. 打的点在另外一个region,且自己不在connector上，（true && false）|| true
+    2. 自己在connector上，但还没有过region, 如果能正常通过，(true && true) || true
+      如果临时换点，
+        (1)点在同区域内：不会被覆盖，(true && true) || false
+        (2)点在不同区域内：会被覆盖，(true && false) || true
+    3. 自己在connector上，但是过region了，(true && true) || false
+    4. 自己通过connector, 如果不需要再经过connector, 则(false && false) || false
+      反之则(false && false) || true
+    */
+    need_action_ = (!active_region_id_.empty() && is_on_connector_) || !topo_result.connector_indices.empty();
   }
-
   return path;
 }
-
+  
 }  // namespace topology_global_planner
 
 PLUGINLIB_EXPORT_CLASS(topology_global_planner::TopologyGlobalPlanner, nav2_core::GlobalPlanner)
