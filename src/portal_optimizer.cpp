@@ -30,49 +30,6 @@ geometry_msgs::msg::PoseStamped TopologyGlobalPlanner::makePoseFromPoint(
   return pose;
 }
 
-nav_msgs::msg::Path TopologyGlobalPlanner::makeStraightConnectorPath( //把waitpose到exitpose输出成直线
-  const geometry_msgs::msg::PoseStamped & start,
-  const geometry_msgs::msg::PoseStamped & goal,
-  double resolution) const
-{
-  nav_msgs::msg::Path path;
-  path.header.frame_id = global_frame_;
-  path.header.stamp = clock_ ? clock_->now() : rclcpp::Time(start.header.stamp);
-
-  const double dx = goal.pose.position.x - start.pose.position.x;
-  const double dy = goal.pose.position.y - start.pose.position.y;
-  const double distance = std::hypot(dx, dy);
-
-  if (distance <= 1e-9) {
-    path.poses.push_back(start);
-    path.poses.push_back(goal);
-    return path;
-  }
-
-  resolution = std::max(0.01, resolution);
-
-  const int segment_count = std::max(1, static_cast<int>(std::ceil(distance / resolution)));
-  const double yaw = std::atan2(dy, dx);
-
-  path.poses.reserve(static_cast<size_t>(segment_count + 1));
-
-  for (int i = 0; i <= segment_count; ++i) {
-    const double t = static_cast<double>(i) / static_cast<double>(segment_count);
-
-    auto pose = start;
-    pose.header.frame_id = global_frame_;
-    pose.header.stamp = path.header.stamp;
-
-    pose.pose.position.x = start.pose.position.x + t * dx;
-    pose.pose.position.y = start.pose.position.y + t * dy;
-    pose.pose.position.z = start.pose.position.z + t * (goal.pose.position.z - start.pose.position.z);
-
-    setYaw(pose, yaw);
-    path.poses.push_back(pose);
-  }
-
-  return path;
-}
 
 nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
   const geometry_msgs::msg::PoseStamped & start,
@@ -91,7 +48,6 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
   full_path.header.stamp = clock_ ? clock_->now() : rclcpp::Time(0);
 
   geometry_msgs::msg::PoseStamped current_pose = start;
-  bool handled_active_connector = false;
 
   if (is_on_connector_) {
     const bool is_in_next_region = pointInRegionWithTolerance(
@@ -101,8 +57,6 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
       region_constraint_tolerance_);
 
     if (is_in_next_region) {
-      handled_active_connector = true;
-
       const double vx = active_exit_point_.x - active_wait_point_.x;
       const double vy = active_exit_point_.y - active_wait_point_.y;
       const double length_sq = vx * vx + vy * vy;
@@ -111,6 +65,8 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
         RCLCPP_ERROR(logger_, "Invalid active connector geometry");
         is_on_connector_ = false;
         active_region_id_.clear();
+        active_connector_id_.clear();
+        planned_connector_id_.clear();
         return makeEmptyPath();
       }
 
@@ -119,37 +75,28 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
 
       const double t = (px * vx + py * vy) / length_sq;
 
-      const double proj_x = active_wait_point_.x + t * vx;
-      const double proj_y = active_wait_point_.y + t * vy;
-
       const double distance_to_exit = euclidean(
         current_pose.pose.position.x,
         current_pose.pose.position.y,
         active_exit_point_.x,
         active_exit_point_.y);
 
-      if (t >= 1.0 || distance_to_exit <= 0.15) {
+      if (t >= 0.8 || distance_to_exit <= 0.5) {
         RCLCPP_INFO(logger_, "Robot has completed active connector traversal");
         is_on_connector_ = false;
         active_region_id_.clear();
+        active_connector_id_.clear();
+        planned_connector_id_.clear();
       } else {
         const double connector_yaw = std::atan2(vy, vx);
 
-        auto straight_start = makePoseFromPoint(active_wait_point_, full_path.header.stamp);
-        straight_start.pose.position.x = proj_x;
-        straight_start.pose.position.y = proj_y;
-        setYaw(straight_start, connector_yaw);
+        auto connector_start = makePoseFromPoint(active_wait_point_, full_path.header.stamp);
+        connector_start = current_pose;
 
         auto active_exit_pose = makePoseFromPoint(active_exit_point_, full_path.header.stamp);
         setYaw(active_exit_pose, connector_yaw);
 
-        auto approach_path = makeStraightConnectorPath(current_pose, straight_start, no_action_line_resolution_);
-        if (approach_path.poses.empty()) {
-          return makeEmptyPath();
-        }
-        appendSegment(full_path, approach_path);
-
-        auto exit_path = makeStraightConnectorPath(straight_start, active_exit_pose, no_action_line_resolution_);
+        auto exit_path = makeInnerPlannerPath(connector_start, active_exit_pose);
         if (exit_path.poses.empty()) {
           return makeEmptyPath();
         }
@@ -215,6 +162,13 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
       wait_point = connector.portal_end;
       exit_point = connector.portal_start;
     }
+    else
+    {
+      RCLCPP_ERROR(
+        logger_, "Connector '%s' does not match transition '%s' -> '%s'",
+        connector.id.c_str(), current_region.c_str(), next_region.c_str());
+      return makeEmptyPath();
+    }
 
     auto wait_pose = makePoseFromPoint(wait_point, full_path.header.stamp);
     auto exit_pose = makePoseFromPoint(exit_point, full_path.header.stamp);
@@ -226,7 +180,7 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
     
     // 第一段 Connector 重规划时，判断机器人是否已经越过 wait_pose
     bool entered_connector = false;
-    auto straight_start = wait_pose;
+    auto connector_start = wait_pose;
     double proj_x = 0.0;
     double proj_y = 0.0;
 
@@ -248,7 +202,7 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
           proj_x,
           proj_y);
 
-        entered_connector = t > 0.02 && t < 1.0 && lateral_distance < 0.30;
+        entered_connector = t > -0.2 && t < 1.0 && lateral_distance < 0.80;
       }
     }
 
@@ -273,32 +227,30 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
       active_wait_point_ = wait_point;
       active_exit_point_ = exit_point;
       active_region_id_ = next_region;
+      active_connector_id_ = connector.id;
+      planned_connector_id_ = connector.id;
 
-      // 已经越过 wait_pose：直接从机器人当前投影位置走直线到 exit_pose
-      auto proj_pose = makePoseFromPoint(Point2D{proj_x, proj_y}, full_path.header.stamp);
+      // 已经越过 wait_pose：直接从机器人当前位置走到 exit_pose
 
-      straight_start = proj_pose;
-      straight_start.header.frame_id = global_frame_;
-      straight_start.header.stamp = full_path.header.stamp;
-      setYaw(straight_start, connector_yaw);
-
-      auto connector_approach_straight_path = makeStraightConnectorPath(current_pose, straight_start, no_action_line_resolution_);
-      if (connector_approach_straight_path.poses.empty()) {
-        RCLCPP_WARN(logger_, "Failed to generate straight path for connector '%s'", connector.id.c_str());
-        return makeEmptyPath();
-      }
-      appendSegment(full_path, connector_approach_straight_path);
+      connector_start = current_pose;
+      connector_start.header.frame_id = global_frame_;
+      connector_start.header.stamp = full_path.header.stamp;
+      setYaw(connector_start, connector_yaw);
     }
 
     // wait_pose -> exit_pose，或者机器人当前位置 -> exit_pose
-    auto connector_straight_path = makeStraightConnectorPath(straight_start, exit_pose, no_action_line_resolution_);
+    auto connector_path = makeInnerPlannerPath(connector_start, exit_pose);
 
-    if (connector_straight_path.poses.empty()) {
-      RCLCPP_WARN(logger_, "Failed to generate straight path for connector '%s'", connector.id.c_str());
+    if (connector_path.poses.empty()) {
+      RCLCPP_WARN(logger_, "Failed to plan path through connector '%s'", connector.id.c_str());
       return makeEmptyPath();
     }
-
-    appendSegment(full_path, connector_straight_path);
+    if (!pathInsideConnectorStrip(connector_path, wait_point, exit_point, connector_path_half_width_))
+    {
+      RCLCPP_WARN(logger_, "Connector '%s' path makes an excessive detour", connector.id.c_str());
+      return makeEmptyPath();
+    }
+    appendSegment(full_path, connector_path);
 
     // 下一段从当前 Connector 出口开始
     current_pose = exit_pose;

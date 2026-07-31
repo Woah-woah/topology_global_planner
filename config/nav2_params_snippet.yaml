@@ -23,6 +23,8 @@ planner_server:
       # Example route R3 -> R5 -> R4: the C35 -> C54 segment must stay inside R5.
       enforce_region_constraint: true
       region_constraint_tolerance: 0.15   # meters; allow small boundary/portal tolerance
+      blocked_goal_reset_distance: 0.50   # a farther goal change restores blocked connector costs
+      blocked_connector_cost: 999.0       # cost assigned by /TopoPlanner/block_cmd
 
       # Inner planner = your original global planner.
       # If your original planner was SmacPlanner2D, change this to:

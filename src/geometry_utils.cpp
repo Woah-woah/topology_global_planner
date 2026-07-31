@@ -176,6 +176,48 @@ bool TopologyGlobalPlanner::pathInsideRegionWithTolerance(
   return true;
 }
 
+bool TopologyGlobalPlanner::pathInsideConnectorStrip(
+  const nav_msgs::msg::Path & path,
+  const Point2D & wait,
+  const Point2D & exit,
+  double half_width) const
+{
+  const double vx = exit.x - wait.x;
+  const double vy = exit.y - wait.y;
+  const double length_sq = vx * vx + vy * vy;
+
+  if (length_sq <= 1e-9) {
+    return false;
+  }
+
+  for (const auto & pose : path.poses) {
+    const double px = pose.pose.position.x - wait.x;
+    const double py = pose.pose.position.y - wait.y;
+
+    const double t = (px * vx + py * vy) / length_sq;
+
+    // 不允许跑到 wait 后面或 exit 后面太远
+    if (t < -0.50 || t > 1.50) {
+      return false;
+    }
+
+    const double clamped_t = std::clamp(t, 0.0, 1.0);
+    const double proj_x = wait.x + clamped_t * vx;
+    const double proj_y = wait.y + clamped_t * vy;
+
+    const double lateral_distance = euclidean(
+      pose.pose.position.x,
+      pose.pose.position.y,
+      proj_x,
+      proj_y);
+
+    if (lateral_distance > half_width) {
+      return false;
+    }
+  }
+  return true;
+}
+
 double TopologyGlobalPlanner::distancePointToSegment(
   const Point2D & p, const Point2D & a, const Point2D & b) const
 {

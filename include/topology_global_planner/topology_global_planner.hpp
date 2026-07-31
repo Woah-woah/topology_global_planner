@@ -17,9 +17,7 @@
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/bool.hpp"
-
-#include "topology_global_planner/srv/switch_route_mode.hpp"
-#include "topology_global_planner/srv/restore_connector_cost.hpp"
+#include "std_msgs/msg/u_int8.hpp"
 
 namespace topology_global_planner
 {
@@ -93,14 +91,10 @@ private:
   const Region * getRegionById(const std::string & id) const;
   bool pointInRegionWithTolerance(double x, double y, const std::string & region_id, double tolerance) const;
   bool pathInsideRegionWithTolerance(const nav_msgs::msg::Path & path, const std::string & region_id, double tolerance) const;
+  bool pathInsideConnectorStrip(const nav_msgs::msg::Path & path, const Point2D & wait, const Point2D & exit, double half_width) const;
   double distancePointToSegment(const Point2D & p, const Point2D & a, const Point2D & b) const;
   Point2D computeCentroid(const std::vector<Point2D> & polygon) const;
 
-  nav_msgs::msg::Path makeStraightConnectorPath(
-    const geometry_msgs::msg::PoseStamped & start,
-    const geometry_msgs::msg::PoseStamped & goal,
-    double resolution
-  ) const;
 
   nav_msgs::msg::Path makePortalOptimizedTopologyPath(
     const geometry_msgs::msg::PoseStamped & start,
@@ -158,9 +152,15 @@ private:
 
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr connector_debug_markers_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr need_action_pub_;
-  rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr current_region_pub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr block_cmd_sub_;
+  rclcpp::TimerBase::SharedPtr need_action_timer_;
+  rclcpp::TimerBase::SharedPtr current_region_timer_;
   void publishConnectorDebugMarkers();
   void publishNeedAction();
+  void publishCurrentRegion();
+  void blockCmdCallback(const std_msgs::msg::Bool::SharedPtr msg);
+  void restoreAllConnectorCosts();
 
   std::string name_;
   std::string global_frame_;
@@ -175,7 +175,9 @@ private:
   double max_nearest_region_distance_{1.0};
   bool enforce_region_constraint_{true};
   double region_constraint_tolerance_{0.15};
-  double no_action_line_resolution_{0.10};
+  double connector_path_half_width_{0.8};
+  double blocked_goal_reset_distance_{0.50};
+  double blocked_connector_cost_{999.0};
 
   std::string inner_planner_plugin_{"nav2_navfn_planner/NavfnPlanner"};
   std::string inner_planner_name_{"InnerPlanner"};
@@ -192,23 +194,12 @@ private:
   Point2D active_exit_point_;
   bool is_on_connector_{false};
   std::string active_region_id_;
+  std::string active_connector_id_;
+  std::string planned_connector_id_;
   bool need_action_{false};
 
-/*-----------------------------------------SERVICE-----------------------------------------*/
-  rclcpp::Service<topology_global_planner::srv::SwitchRouteMode>::SharedPtr switch_route_mode_srv_;
-  rclcpp::Service<topology_global_planner::srv::RestoreConnectorCost>::SharedPtr re_connector_cost_srv_;
-  std::string blocked_connector_id;
-
-  void switchRouteModeCallback(
-    const std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Request> request,
-    std::shared_ptr<topology_global_planner::srv::SwitchRouteMode::Response> response
-  );
-  void reConnectorCostCallback(
-    const std::shared_ptr<topology_global_planner::srv::RestoreConnectorCost::Request> request,
-    std::shared_ptr<topology_global_planner::srv::RestoreConnectorCost::Response> response
-  );
-
-/*-----------------------------------------------------------------------------------------*/
+  geometry_msgs::msg::PoseStamped last_goal_;
+  bool has_last_goal_{false};
 };
 
 }  // namespace topology_global_planner

@@ -18,7 +18,6 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
@@ -31,7 +30,6 @@ add_library(${PLUGIN_LIB_NAME} SHARED
   src/topology_search.cpp
   src/portal_optimizer.cpp
   src/path_planning.cpp
-  src/switch_route_service.cpp
 )
 
 target_include_directories(${PLUGIN_LIB_NAME} PUBLIC
@@ -95,20 +93,8 @@ ament_export_dependencies(
   std_msgs
 )
 
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "srv/SwitchRouteMode.srv"
-  "srv/RestoreConnectorCost.srv"
-  DEPENDENCIES geometry_msgs
-)
-
-rosidl_get_typesupport_target(cpp_typesupport_target
-  ${PROJECT_NAME}
-  "rosidl_typesupport_cpp"
-)
-
 target_link_libraries(${PLUGIN_LIB_NAME}
   yaml-cpp
-  "${cpp_typesupport_target}"
 )
 
 ament_package()
