@@ -118,7 +118,7 @@ void TopologyGlobalPlanner::configure(
     rclcpp::QoS(1).transient_local().reliable()
   );
 
-  need_action_pub_ = node_->create_publisher<std_msgs::msg::Bool>(
+  need_action_pub_ = node_->create_publisher<std_msgs::msg::String>(
     "TopoPlanner/need_action",
     rclcpp::QoS(1).transient_local().reliable()
   );
@@ -189,8 +189,7 @@ void TopologyGlobalPlanner::cleanup()
   is_on_connector_ = false;
   active_region_id_.clear();
   active_connector_id_.clear();
-  planned_connector_id_.clear();
-  need_action_ = false;
+  clearPlannedConnector();
   has_last_goal_ = false;
 }
 
@@ -240,12 +239,14 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
 
   const auto start_global = normalizePoseFrame(start);
   const auto goal_global = normalizePoseFrame(goal);
+
+  // 新拓扑搜索前，先根据位置更新 planned -> active 或退回入口的 active 解除。
+  updateConnectorEntryLatch(start_global);
   
   if (!use_topology_ || regions_.empty() || connectors_.empty()) {
-    // Connector 通过状态已经锁存时，直接规划也不能提前抬头。
+    // Connector 通过状态已经锁存时，直接规划也不能提前清除 Connector ID。
     if (!is_on_connector_) {
-      need_action_ = false;
-      planned_connector_id_.clear();
+      clearPlannedConnector();
     }
     publishNeedAction();
     return makeInnerPlannerPath(start_global, goal_global);
@@ -272,7 +273,7 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
 
   // // 起点终点有一个不在region内就回退
   // if (start_region.empty() || goal_region.empty()) {
-  //   need_action_ = false;
+  //   planned_connector_id_.clear();
   //   return fallbackDirectPlan(
   //     start_global, goal_global,
   //     "start or goal is outside all topology regions: start_region='" + start_region +
@@ -281,8 +282,7 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
 
   // 起终点在同一个region内且当前不在connector上就回退
   if (start_region == goal_region && !is_on_connector_) {
-    need_action_ = false;
-    planned_connector_id_.clear();
+    clearPlannedConnector();
     publishNeedAction();
     RCLCPP_DEBUG(
       node_->get_logger(), "Start and goal are in the same region '%s'. Using inner planner directly.",
@@ -293,10 +293,9 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
   // 找不到拓扑可通行路径就回退
   const auto topo_result = searchTopology(start_region, goal_region, start_global, goal_global);
   if (!topo_result.success) {
-    // 搜索失败不代表已经通过 Connector，保留正在通过时的动作锁存。
+    // 搜索失败不代表已经通过 Connector，保留正在通过时的 ID 锁存。
     if (!is_on_connector_) {
-      need_action_ = false;
-      planned_connector_id_.clear();
+      clearPlannedConnector();
     }
     publishNeedAction();
     return fallbackDirectPlan(
@@ -305,34 +304,48 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
   }
 
   auto update_need_action = [this, &topo_result]() {
-    // 一旦进入 Connector，need_action_ 就由 is_on_connector_ 锁存。
-    // 即使新目标落回当前 region、拓扑结果不再包含 Connector，也不能覆盖当前动作。
+    // 一旦进入 Connector，publishNeedAction() 优先发布 active_connector_id_。
+    // 即使新目标落回当前 region、拓扑结果不再包含 Connector，也不能覆盖当前 ID。
     if (is_on_connector_) {
       publishNeedAction();
       return;
     }
 
     // 尚未进入 Connector 时，拓扑路径中的第一个 Connector 就是当前要通过的 Connector。
-    const Connector * current_connector = nullptr;
-    if (!topo_result.connector_indices.empty()) {
+    clearPlannedConnector();
+    if (!topo_result.connector_indices.empty() && topo_result.region_path.size() >= 2) {
       const int connector_index = topo_result.connector_indices.front();
       if (connector_index >= 0 &&
         static_cast<size_t>(connector_index) < connectors_.size())
       {
-        current_connector = &connectors_[static_cast<size_t>(connector_index)];
-        planned_connector_id_ = current_connector->id;
+        const auto & connector = connectors_[static_cast<size_t>(connector_index)];
+        const auto & current_region = topo_result.region_path[0];
+        const auto & next_region = topo_result.region_path[1];
+
+        if (connector.from == current_region && connector.to == next_region) {
+          planned_wait_point_ = connector.portal_start;
+          planned_exit_point_ = connector.portal_end;
+        } else if (
+          connector.mode == "two_way" && connector.to == current_region &&
+          connector.from == next_region)
+        {
+          planned_wait_point_ = connector.portal_end;
+          planned_exit_point_ = connector.portal_start;
+        } else {
+          publishNeedAction();
+          return;
+        }
+
+        planned_connector_id_ = connector.id;
+        planned_next_region_id_ = next_region;
+        has_planned_connector_geometry_ = true;
       }
     }
 
-    // 只有 action: down 才触发过洞动作；action: none（以及未知值）均发布 false。
-    need_action_ = current_connector != nullptr && current_connector->action == "down";
-    if (current_connector == nullptr) {
-      planned_connector_id_.clear();
-    }
     publishNeedAction();
   };
 
-  // A* 分段规划可能耗时，先发布本轮选中 Connector 对应的动作状态，避免沿用上一轮状态。
+  // A* 分段规划可能耗时，先发布本轮选中的第一个 Connector ID。
   update_need_action();
 
   
@@ -352,6 +365,12 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
 
   if (path.poses.empty() && fallback_to_inner_planner_) {  // fallback始终为true的情况
     RCLCPP_WARN(node_->get_logger(), "Segmented topology planning failed. Falling back to direct inner planner from start to goal.");
+    // 未进入 Connector 时，回退路径不再经过计划中的 Connector。
+    // 如果已经进入，则继续发布 active_connector_id_ 直到真正通过。
+    if (!is_on_connector_) {
+      clearPlannedConnector();
+    }
+    publishNeedAction();
     return makeInnerPlannerPath(start_global, goal_global);
   }
   return path;

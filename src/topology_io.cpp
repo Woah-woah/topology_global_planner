@@ -46,9 +46,10 @@ bool TopologyGlobalPlanner::loadTopologyYaml(const std::string & yaml_path)
       connector.from = connector_node["from"].as<std::string>();
       connector.to = connector_node["to"].as<std::string>();
       connector.cost = connector_node["cost"] ? connector_node["cost"].as<double>() : 1.0;
-      connector.action = connector_node["action"] ? connector_node["action"].as<std::string>() : "none";
-      if (connector.action != "down" && connector.action != "none") {
-        RCLCPP_WARN(logger_, "Connector '%s' has unknown action '%s'. It will not trigger need_action.",
+      connector.action = connector_node["action"].as<std::string>();
+
+      if (connector.action != "down" && connector.action != "step") {
+        RCLCPP_WARN(logger_, "Connector '%s' has unknown action '%s'.",
           connector.id.c_str(), connector.action.c_str());
       }
 
@@ -201,7 +202,7 @@ void TopologyGlobalPlanner::blockCmdCallback(const std_msgs::msg::Bool::SharedPt
 void TopologyGlobalPlanner::restoreAllConnectorCosts()
 {
   for (auto & connector : connectors_) {
-    if (connector.cost == 1.0) {
+    if (connector.cost == 1.0 || connector.id == "C1") {
       continue;
     }
 

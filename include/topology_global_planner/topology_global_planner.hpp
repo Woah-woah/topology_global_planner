@@ -151,7 +151,7 @@ private:
   rclcpp::Clock::SharedPtr clock_;
 
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr connector_debug_markers_pub_;
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr need_action_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr need_action_pub_;
   rclcpp::Publisher<std_msgs::msg::UInt8>::SharedPtr current_region_pub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr block_cmd_sub_;
   rclcpp::TimerBase::SharedPtr need_action_timer_;
@@ -159,6 +159,8 @@ private:
   void publishConnectorDebugMarkers();
   void publishNeedAction();
   void publishCurrentRegion();
+  void clearPlannedConnector();
+  void updateConnectorEntryLatch(const geometry_msgs::msg::PoseStamped & current_pose);
   void blockCmdCallback(const std_msgs::msg::Bool::SharedPtr msg);
   void restoreAllConnectorCosts();
 
@@ -196,7 +198,10 @@ private:
   std::string active_region_id_;
   std::string active_connector_id_;
   std::string planned_connector_id_;
-  bool need_action_{false};
+  Point2D planned_wait_point_;
+  Point2D planned_exit_point_;
+  std::string planned_next_region_id_;
+  bool has_planned_connector_geometry_{false};
 
   geometry_msgs::msg::PoseStamped last_goal_;
   bool has_last_goal_{false};

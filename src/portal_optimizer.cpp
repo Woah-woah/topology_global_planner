@@ -16,6 +16,90 @@
 namespace topology_global_planner
 {
 
+void TopologyGlobalPlanner::clearPlannedConnector()
+{
+  planned_connector_id_.clear();
+  planned_next_region_id_.clear();
+  has_planned_connector_geometry_ = false;
+}
+
+void TopologyGlobalPlanner::updateConnectorEntryLatch(
+  const geometry_msgs::msg::PoseStamped & current_pose)
+{
+  if (is_on_connector_) {
+    const double vx = active_exit_point_.x - active_wait_point_.x;
+    const double vy = active_exit_point_.y - active_wait_point_.y;
+    const double length_sq = vx * vx + vy * vy;
+
+    if (length_sq > 1e-9) {
+      const double px = current_pose.pose.position.x - active_wait_point_.x;
+      const double py = current_pose.pose.position.y - active_wait_point_.y;
+      const double t = (px * vx + py * vy) / length_sq;
+
+      if (t <= -0.1) {
+        RCLCPP_INFO(
+          logger_, "Robot exited active connector '%s' from the entrance side",
+          active_connector_id_.c_str());
+        is_on_connector_ = false;
+        active_region_id_.clear();
+        active_connector_id_.clear();
+        clearPlannedConnector();
+      }
+    }
+    return;
+  }
+
+  if (planned_connector_id_.empty() || !has_planned_connector_geometry_)
+  {
+    return;
+  }
+
+  const double vx = planned_exit_point_.x - planned_wait_point_.x;
+  const double vy = planned_exit_point_.y - planned_wait_point_.y;
+  const double length_sq = vx * vx + vy * vy;
+
+  if (length_sq <= 1e-9) {
+    RCLCPP_ERROR(
+      logger_, "Invalid planned connector geometry for '%s'",
+      planned_connector_id_.c_str());
+    clearPlannedConnector();
+    return;
+  }
+
+  const double px = current_pose.pose.position.x - planned_wait_point_.x;
+  const double py = current_pose.pose.position.y - planned_wait_point_.y;
+  const double t = (px * vx + py * vy) / length_sq;
+  const double projection_x = planned_wait_point_.x + t * vx;
+  const double projection_y = planned_wait_point_.y + t * vy;
+  const double lateral_distance = euclidean(
+    current_pose.pose.position.x,
+    current_pose.pose.position.y,
+    projection_x,
+    projection_y);
+
+  if (t >= 0.8) {
+    // 两次重规划之间已经直接越过出口，不再锁存旧 Connector。
+    clearPlannedConnector();
+    return;
+  }
+
+  if (t <= -0.2 || lateral_distance >= 0.80) {
+    return;
+  }
+
+  is_on_connector_ = true;
+  active_wait_point_ = planned_wait_point_;
+  active_exit_point_ = planned_exit_point_;
+  active_region_id_ = planned_next_region_id_;
+  active_connector_id_ = planned_connector_id_;
+  planned_next_region_id_.clear();
+  has_planned_connector_geometry_ = false;
+
+  RCLCPP_INFO(
+    logger_, "Latched planned connector '%s' as active at t=%.3f",
+    active_connector_id_.c_str(), t);
+}
+
 geometry_msgs::msg::PoseStamped TopologyGlobalPlanner::makePoseFromPoint(
   const Point2D & point,
   const rclcpp::Time & stamp) const                 // 把二维点，变成 ROS/Nav2 能用的 pose
@@ -66,7 +150,7 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
         is_on_connector_ = false;
         active_region_id_.clear();
         active_connector_id_.clear();
-        planned_connector_id_.clear();
+        clearPlannedConnector();
         return makeEmptyPath();
       }
 
@@ -75,18 +159,14 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
 
       const double t = (px * vx + py * vy) / length_sq;
 
-      const double distance_to_exit = euclidean(
-        current_pose.pose.position.x,
-        current_pose.pose.position.y,
-        active_exit_point_.x,
-        active_exit_point_.y);
-
-      if (t >= 0.8 || distance_to_exit <= 0.5) {
+      // Region 边界可能位于 Connector 中部，进入下一 Region 不等于已通过。
+      // 只有到达或越过 exit_point 后才释放 active_connector_id_ 锁存。
+      if (t >= 1.0) {
         RCLCPP_INFO(logger_, "Robot has completed active connector traversal");
         is_on_connector_ = false;
         active_region_id_.clear();
         active_connector_id_.clear();
-        planned_connector_id_.clear();
+        clearPlannedConnector();
       } else {
         const double connector_yaw = std::atan2(vy, vx);
 
@@ -229,6 +309,8 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
       active_region_id_ = next_region;
       active_connector_id_ = connector.id;
       planned_connector_id_ = connector.id;
+      planned_next_region_id_.clear();
+      has_planned_connector_geometry_ = false;
 
       // 已经越过 wait_pose：直接从机器人当前位置走到 exit_pose
 
@@ -280,8 +362,13 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
 
 void TopologyGlobalPlanner::publishNeedAction()
 {
-  std_msgs::msg::Bool msg;
-  msg.data = need_action_;
+  if (!need_action_pub_) {
+    return;
+  }
+
+  std_msgs::msg::String msg;
+  msg.data = is_on_connector_ && !active_connector_id_.empty() ?
+    active_connector_id_ : planned_connector_id_;
   need_action_pub_->publish(msg);
 }
 }  // namespace topology_global_planner
