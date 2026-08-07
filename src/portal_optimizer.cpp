@@ -132,6 +132,8 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
   full_path.header.stamp = clock_ ? clock_->now() : rclcpp::Time(0);
 
   geometry_msgs::msg::PoseStamped current_pose = start;
+  std::string handled_active_connector_id;
+  std::string handled_active_region_id;
 
   if (is_on_connector_) {
     const bool is_in_next_region = pointInRegionWithTolerance(
@@ -140,50 +142,45 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
       active_region_id_,
       region_constraint_tolerance_);
 
-    if (is_in_next_region) {
-      const double vx = active_exit_point_.x - active_wait_point_.x;
-      const double vy = active_exit_point_.y - active_wait_point_.y;
-      const double length_sq = vx * vx + vy * vy;
+    const double vx = active_exit_point_.x - active_wait_point_.x;
+    const double vy = active_exit_point_.y - active_wait_point_.y;
+    const double length_sq = vx * vx + vy * vy;
 
-      if (length_sq <= 1e-9) {
-        RCLCPP_ERROR(logger_, "Invalid active connector geometry");
-        is_on_connector_ = false;
-        active_region_id_.clear();
-        active_connector_id_.clear();
-        clearPlannedConnector();
+    if (length_sq <= 1e-9) {
+      RCLCPP_ERROR(logger_, "Invalid active connector geometry");
+      is_on_connector_ = false;
+      active_region_id_.clear();
+      active_connector_id_.clear();
+      clearPlannedConnector();
+      return makeEmptyPath();
+    }
+
+    const double px = current_pose.pose.position.x - active_wait_point_.x;
+    const double py = current_pose.pose.position.y - active_wait_point_.y;
+    const double t = (px * vx + py * vy) / length_sq;
+
+    handled_active_connector_id = active_connector_id_;
+    handled_active_region_id = active_region_id_;
+
+    // Region 边界可能位于 Connector 中部。只有机器人既进入下一 Region，
+    // 又到达 Connector 出口附近时，才释放 active connector。
+    if (is_in_next_region && t >= 0.8) {
+      RCLCPP_INFO(logger_, "Robot has completed active connector traversal");
+      is_on_connector_ = false;
+      active_region_id_.clear();
+      active_connector_id_.clear();
+      clearPlannedConnector();
+    } else {
+      const double connector_yaw = std::atan2(vy, vx);
+      auto active_exit_pose = makePoseFromPoint(active_exit_point_, full_path.header.stamp);
+      setYaw(active_exit_pose, connector_yaw);
+
+      auto exit_path = makeInnerPlannerPath(current_pose, active_exit_pose);
+      if (exit_path.poses.empty()) {
         return makeEmptyPath();
       }
-
-      const double px = current_pose.pose.position.x - active_wait_point_.x;
-      const double py = current_pose.pose.position.y - active_wait_point_.y;
-
-      const double t = (px * vx + py * vy) / length_sq;
-
-      // Region 边界可能位于 Connector 中部，进入下一 Region 不等于已通过。
-      // 只有到达或越过 exit_point 后才释放 active_connector_id_ 锁存。
-      if (t >= 1.0) {
-        RCLCPP_INFO(logger_, "Robot has completed active connector traversal");
-        is_on_connector_ = false;
-        active_region_id_.clear();
-        active_connector_id_.clear();
-        clearPlannedConnector();
-      } else {
-        const double connector_yaw = std::atan2(vy, vx);
-
-        auto connector_start = makePoseFromPoint(active_wait_point_, full_path.header.stamp);
-        connector_start = current_pose;
-
-        auto active_exit_pose = makePoseFromPoint(active_exit_point_, full_path.header.stamp);
-        setYaw(active_exit_pose, connector_yaw);
-
-        auto exit_path = makeInnerPlannerPath(connector_start, active_exit_pose);
-        if (exit_path.poses.empty()) {
-          return makeEmptyPath();
-        }
-        appendSegment(full_path, exit_path);
-
-        current_pose = active_exit_pose;
-      }
+      appendSegment(full_path, exit_path);
+      current_pose = active_exit_pose;
     }
   }
 
@@ -227,6 +224,18 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
     const std::string & current_region = topo_result.region_path[step];
     const std::string & next_region = topo_result.region_path[step + 1];
 
+    if (
+      step == 0 && !handled_active_connector_id.empty() &&
+      connector.id == handled_active_connector_id &&
+      next_region == handled_active_region_id)
+    {
+      RCLCPP_INFO(
+        logger_,
+        "Skipping connector '%s' because its active traversal was already handled",
+        connector.id.c_str());
+      continue;
+    }
+
     Point2D wait_point;
     Point2D exit_point;
 
@@ -250,6 +259,15 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
       return makeEmptyPath();
     }
 
+
+    if (!is_on_connector_ && planned_connector_id_.empty()) {
+      planned_connector_id_ = connector.id;
+      planned_wait_point_ = wait_point;
+      planned_exit_point_ = exit_point;
+      planned_next_region_id_ = next_region;
+      has_planned_connector_geometry_ = true;
+    }
+
     auto wait_pose = makePoseFromPoint(wait_point, full_path.header.stamp);
     auto exit_pose = makePoseFromPoint(exit_point, full_path.header.stamp);
 
@@ -264,7 +282,7 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makePortalOptimizedTopologyPath(
     double proj_x = 0.0;
     double proj_y = 0.0;
 
-    if (step == 0) {
+    if (step == 0 && handled_active_connector_id.empty()) {
       const double vx = exit_point.x - wait_point.x;
       const double vy = exit_point.y - wait_point.y;
       const double length_sq = vx * vx + vy * vy;

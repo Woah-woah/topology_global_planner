@@ -202,7 +202,7 @@ void TopologyGlobalPlanner::blockCmdCallback(const std_msgs::msg::Bool::SharedPt
 void TopologyGlobalPlanner::restoreAllConnectorCosts()
 {
   for (auto & connector : connectors_) {
-    if (connector.cost == 1.0 || connector.id == "C1") {
+    if (connector.cost == 1.0) {
       continue;
     }
 

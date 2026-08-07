@@ -271,6 +271,16 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
   const std::string start_region = findRegion(start_global.pose.position.x, start_global.pose.position.y);
   const std::string goal_region = findRegion(goal_global.pose.position.x, goal_global.pose.position.y);
 
+  // 已经进入 Connector 后，后续拓扑必须从当前 Connector 的出口 Region 开始。
+  // 机器人当下可能仍被 findRegion() 判在入口 Region，但路径会先强制补到 exit。
+  std::string topology_start_region = start_region;
+  auto topology_start_pose = start_global;
+  if (is_on_connector_ && !active_region_id_.empty()) {
+    topology_start_region = active_region_id_;
+    topology_start_pose.pose.position.x = active_exit_point_.x;
+    topology_start_pose.pose.position.y = active_exit_point_.y;
+  }
+
   // // 起点终点有一个不在region内就回退
   // if (start_region.empty() || goal_region.empty()) {
   //   planned_connector_id_.clear();
@@ -291,7 +301,8 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
   }
 
   // 找不到拓扑可通行路径就回退
-  const auto topo_result = searchTopology(start_region, goal_region, start_global, goal_global);
+  const auto topo_result = searchTopology(
+    topology_start_region, goal_region, topology_start_pose, goal_global);
   if (!topo_result.success) {
     // 搜索失败不代表已经通过 Connector，保留正在通过时的 ID 锁存。
     if (!is_on_connector_) {
@@ -300,7 +311,7 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
     publishNeedAction();
     return fallbackDirectPlan(
       start_global, goal_global,
-      "no topology route from '" + start_region + "' to '" + goal_region + "'");
+      "no topology route from '" + topology_start_region + "' to '" + goal_region + "'");
   }
 
   auto update_need_action = [this, &topo_result]() {
@@ -360,8 +371,9 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::
   
   auto path = makePortalOptimizedTopologyPath(start_global, goal_global, topo_result);
 
-  // 路径生成过程中可能进入、完成或放弃 Connector，按最新锁存状态再发布一次。
-  update_need_action();
+  // 路径生成过程中可能进入或完成 Connector。此时只发布当前状态，
+  // 不再从本轮的旧 topo_result 首段重建 planned connector。
+  publishNeedAction();
 
   if (path.poses.empty() && fallback_to_inner_planner_) {  // fallback始终为true的情况
     RCLCPP_WARN(node_->get_logger(), "Segmented topology planning failed. Falling back to direct inner planner from start to goal.");
