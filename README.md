@@ -374,17 +374,7 @@ planner_plugins: ["TopoPlanner"]
 
 ---
 
-## 10. 测试切换 route mode 服务
-
-如果已经启动 Nav2，并且 `TopologyGlobalPlanner` 已经成功加载，可以这样测试切换 route mode：
-
-```bash
-ros2 service call /switch_route_mode topology_global_planner/srv/SwitchRouteMode "{}"
-```
-
----
-
-## 11. 如果原来用 SmacPlanner2D
+## 10. 如果原来用 SmacPlanner2D
 
 如果你的原始全局规划器是 Smac，可以这样改：
 
@@ -412,7 +402,7 @@ InnerPlanner:
 
 ---
 
-## 12. 主要参数说明
+## 11. 主要参数说明
 
 | 参数 | 默认值 | 作用 |
 |---|---:|---|
@@ -431,10 +421,12 @@ InnerPlanner:
 | `portal_refine_sample_count` | `5` | 细采样点数 |
 | `enforce_region_constraint` | `true` | 是否检查分段路径必须留在 expected region 内 |
 | `region_constraint_tolerance` | `0.15` | region path 检查容差 |
+| `blocked_goal_reset_distance` | `0.50` | 新目标相对上一目标超过该距离时，将所有 connector cost 恢复为 `1.0` |
+| `blocked_connector_cost` | `999.0` | `/TopoPlanner/block_cmd` 为 `true` 时赋给当前 connector 的临时 cost |
 
 ---
 
-## 13. topology.yaml 格式
+## 12. topology.yaml 格式
 
 ### 13.1 regions
 

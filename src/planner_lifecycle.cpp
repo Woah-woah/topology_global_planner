@@ -231,11 +231,16 @@ void TopologyGlobalPlanner::publishCurrentRegion()
 }
 
 // 重要：规划路线
-nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(const geometry_msgs::msg::PoseStamped & start, const geometry_msgs::msg::PoseStamped & goal)
+nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(
+  const geometry_msgs::msg::PoseStamped & start,
+  const geometry_msgs::msg::PoseStamped & goal,
+  std::function<bool()> cancel_checker)
 {
   if (!inner_planner_) {
     throw std::runtime_error("Inner planner is null in TopologyGlobalPlanner::createPlan");
   }
+
+  cancel_checker_ = std::move(cancel_checker);
 
   const auto start_global = normalizePoseFrame(start);
   const auto goal_global = normalizePoseFrame(goal);

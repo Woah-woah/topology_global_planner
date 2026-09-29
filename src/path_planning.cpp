@@ -30,7 +30,7 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makeInnerPlannerPath(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal)
 {
-  auto path = inner_planner_->createPlan(start, goal);
+  auto path = inner_planner_->createPlan(start, goal, cancel_checker_);
   if (!path.poses.empty()) {
     path.header.frame_id = path.header.frame_id.empty() ? global_frame_ : path.header.frame_id;
     if (clock_) {

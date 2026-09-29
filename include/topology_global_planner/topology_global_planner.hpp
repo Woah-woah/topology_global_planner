@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <queue>
 #include <string>
@@ -75,7 +76,8 @@ public:
 
   nav_msgs::msg::Path createPlan(
     const geometry_msgs::msg::PoseStamped & start,
-    const geometry_msgs::msg::PoseStamped & goal
+    const geometry_msgs::msg::PoseStamped & goal,
+    std::function<bool()> cancel_checker
   ) override;
 
 private:
@@ -181,10 +183,11 @@ private:
   double blocked_goal_reset_distance_{0.50};
   double blocked_connector_cost_{999.0};
 
-  std::string inner_planner_plugin_{"nav2_navfn_planner/NavfnPlanner"};
+  std::string inner_planner_plugin_{"nav2_navfn_planner::NavfnPlanner"};
   std::string inner_planner_name_{"InnerPlanner"};
   pluginlib::ClassLoader<nav2_core::GlobalPlanner> inner_planner_loader_;
   nav2_core::GlobalPlanner::Ptr inner_planner_;
+  std::function<bool()> cancel_checker_{[]() {return false;}};
   bool inner_planner_configured_{false};
   bool inner_planner_active_{false};
 
