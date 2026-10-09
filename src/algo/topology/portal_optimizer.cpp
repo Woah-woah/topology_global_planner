@@ -6,8 +6,6 @@
 #include <stdexcept>
 #include <utility>
 
-#include "nav2_util/node_utils.hpp"
-#include "pluginlib/class_list_macros.hpp"
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2/time.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"

@@ -6,8 +6,6 @@
 #include <stdexcept>
 #include <utility>
 
-#include "nav2_util/node_utils.hpp"
-#include "pluginlib/class_list_macros.hpp"
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2/time.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -47,56 +45,55 @@ uint8_t regionIdToUInt8(const std::string & region_id)
 namespace topology_global_planner
 {
 
-TopologyGlobalPlanner::TopologyGlobalPlanner() : inner_planner_loader_("nav2_core", "nav2_core::GlobalPlanner")
-{
-}
-
-void TopologyGlobalPlanner::configure(
-  const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
-  std::string name,
+void TopologyGlobalPlanner::initialize(
+  rclcpp::Node::SharedPtr node,
   std::shared_ptr<tf2_ros::Buffer> tf,
-  std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros
-){
-  node_ = parent.lock();
-  if (!node_) {
-    throw std::runtime_error("Failed to lock lifecycle node in TopologyGlobalPlanner::configure");
-  }
+  nav2_costmap_2d::Costmap2D * costmap,
+  std::string global_frame,
+  std::string robot_base_frame,
+  std::string name)
+{
+  if (!node || !tf || !costmap || global_frame.empty() || robot_base_frame.empty()) {
+    throw std::invalid_argument("TopologyGlobalPlanner: invalid initialization arguments");}
 
-  name_ = name;
-  tf_ = tf;
-  costmap_ros_ = costmap_ros;
-  costmap_ = costmap_ros_->getCostmap();
-  global_frame_ = costmap_ros_->getGlobalFrameID();
+  node_ = std::move(node);
+  tf_ = std::move(tf);
+  costmap_ = costmap;
+  global_frame_ = std::move(global_frame);
+  robot_base_frame_ = std::move(robot_base_frame);
+  name_ = std::move(name);
   clock_ = node_->get_clock();
+  logger_ = node_->get_logger();
 
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".topology_yaml", rclcpp::ParameterValue(std::string("")));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".use_topology", rclcpp::ParameterValue(true));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".fallback_to_inner_planner", rclcpp::ParameterValue(true));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".allow_nearest_region_fallback", rclcpp::ParameterValue(false));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".region_boundary_tolerance", rclcpp::ParameterValue(0.03));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".transform_tolerance", rclcpp::ParameterValue(0.1));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".duplicate_pose_tolerance", rclcpp::ParameterValue(0.02));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".max_nearest_region_distance", rclcpp::ParameterValue(1.0));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".enforce_region_constraint", rclcpp::ParameterValue(true));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".region_constraint_tolerance", rclcpp::ParameterValue(0.15));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".blocked_goal_reset_distance", rclcpp::ParameterValue(0.50));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".blocked_connector_cost", rclcpp::ParameterValue(999.0));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".inner_planner_plugin", rclcpp::ParameterValue(inner_planner_plugin_));
-  nav2_util::declare_parameter_if_not_declared(
-    node_, name_ + ".inner_planner_name", rclcpp::ParameterValue(inner_planner_name_));
+  // 声明参数的函数
+  auto declare = [this](
+      const std::string & key,
+      const rclcpp::ParameterValue & default_value)
+  {
+    const auto full_name = name_ + "." + key;
+    if (!node_->has_parameter(full_name)) {
+      node_->declare_parameter(full_name, default_value);
+    }
+  };
+
+  declare("topology_yaml", rclcpp::ParameterValue(std::string("")));
+  declare("use_topology", rclcpp::ParameterValue(true));
+  declare("fallback_to_inner_planner", rclcpp::ParameterValue(true));
+  declare("allow_nearest_region_fallback", rclcpp::ParameterValue(false));
+  declare("region_boundary_tolerance", rclcpp::ParameterValue(0.03));
+  declare("transform_tolerance", rclcpp::ParameterValue(0.1));
+  declare("duplicate_pose_tolerance", rclcpp::ParameterValue(0.02));
+  declare("max_nearest_region_distance", rclcpp::ParameterValue(1.0));
+  declare("enforce_region_constraint", rclcpp::ParameterValue(true));
+  declare("region_constraint_tolerance", rclcpp::ParameterValue(0.15));
+  declare("blocked_goal_reset_distance", rclcpp::ParameterValue(0.50));
+  declare("blocked_connector_cost", rclcpp::ParameterValue(999.0));
+
+  // 独立 GridPlanner 参数
+  declare("grid.tolerance", rclcpp::ParameterValue(0.2));
+  declare("grid.use_astar", rclcpp::ParameterValue(false));
+  declare("grid.allow_unknown", rclcpp::ParameterValue(true));
+  declare("grid.use_final_approach_orientation", rclcpp::ParameterValue(true));
 
   node_->get_parameter(name_ + ".topology_yaml", topology_yaml_);
   node_->get_parameter(name_ + ".use_topology", use_topology_);
@@ -110,8 +107,15 @@ void TopologyGlobalPlanner::configure(
   node_->get_parameter(name_ + ".region_constraint_tolerance", region_constraint_tolerance_);
   node_->get_parameter(name_ + ".blocked_goal_reset_distance", blocked_goal_reset_distance_);
   node_->get_parameter(name_ + ".blocked_connector_cost", blocked_connector_cost_);
-  node_->get_parameter(name_ + ".inner_planner_plugin", inner_planner_plugin_);
-  node_->get_parameter(name_ + ".inner_planner_name", inner_planner_name_);
+
+  grid::GridPlanner::Options options;
+  node_->get_parameter(name_ + ".grid.tolerance", options.tolerance);
+  node_->get_parameter(name_ + ".grid.use_astar", options.use_astar);
+  node_->get_parameter(name_ + ".grid.allow_unknown", options.allow_unknown);
+  node_->get_parameter(name_ + ".grid.use_final_approach_orientation", options.use_final_approach_orientation);
+
+  grid_planner_ = std::make_unique<grid::GridPlanner>(costmap_, global_frame_, clock_, options);
+  RCLCPP_INFO(logger_, "Standalone GridPlanner initialized");
 
   connector_debug_markers_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
     "TopoPlanner/connector_debug_markers",
@@ -141,14 +145,6 @@ void TopologyGlobalPlanner::configure(
     rclcpp::QoS(1).reliable(),
     std::bind(&TopologyGlobalPlanner::blockCmdCallback, this, std::placeholders::_1));
 
-  try {
-    inner_planner_ = inner_planner_loader_.createUniqueInstance(inner_planner_plugin_);
-    inner_planner_->configure(parent, inner_planner_name_, tf_, costmap_ros_);
-    inner_planner_configured_ = true;
-  } catch (const std::exception & e) {
-    throw std::runtime_error(
-            std::string("Failed to load/configure inner planner '") + inner_planner_plugin_ + "': " + e.what());
-  }
 
   if (use_topology_ && !topology_yaml_.empty()) {
     if (loadTopologyYaml(topology_yaml_)) {            // 从yaml中读取regions connectors 失败回退
@@ -165,82 +161,50 @@ void TopologyGlobalPlanner::configure(
   
 }
 
-void TopologyGlobalPlanner::cleanup()
+TopologyGlobalPlanner::~TopologyGlobalPlanner()
 {
-  RCLCPP_INFO(node_->get_logger(), "Cleaning up TopologyGlobalPlanner");
-  if (inner_planner_configured_ && inner_planner_) {
-    if (inner_planner_active_) {
-      inner_planner_->deactivate();
-      inner_planner_active_ = false;
-    }
-    inner_planner_->cleanup();
-  }
   need_action_timer_.reset();
   current_region_timer_.reset();
   block_cmd_sub_.reset();
-  connector_debug_markers_pub_.reset();
-  need_action_pub_.reset();
-  current_region_pub_.reset();
-  inner_planner_.reset();
-  inner_planner_configured_ = false;
-  regions_.clear();
-  connectors_.clear();
-  graph_.clear();
-  is_on_connector_ = false;
-  active_region_id_.clear();
-  active_connector_id_.clear();
-  clearPlannedConnector();
-  has_last_goal_ = false;
-}
-
-void TopologyGlobalPlanner::activate()
-{
-  RCLCPP_INFO(node_->get_logger(), "Activating TopologyGlobalPlanner");
-  if (inner_planner_configured_ && inner_planner_ && !inner_planner_active_) {
-    inner_planner_->activate();
-    inner_planner_active_ = true;
-  }
-}
-
-void TopologyGlobalPlanner::deactivate()
-{
-  RCLCPP_INFO(node_->get_logger(), "Deactivating TopologyGlobalPlanner");
-  if (inner_planner_configured_ && inner_planner_ && inner_planner_active_) {
-    inner_planner_->deactivate();
-    inner_planner_active_ = false;
-  }
+  grid_planner_.reset();
 }
 
 void TopologyGlobalPlanner::publishCurrentRegion()
 {
-  if (!current_region_pub_ || !costmap_ros_) {
+  if (!current_region_pub_ || !tf_) {
     return;
   }
 
-  std_msgs::msg::UInt8 current_region_msg;
-  current_region_msg.data = 0;
+  std_msgs::msg::UInt8 msg;
+  msg.data = 0;
 
-  geometry_msgs::msg::PoseStamped robot_pose;
-  if (costmap_ros_->getRobotPose(robot_pose)) {
-    const std::string current_region = findRegion(
-      robot_pose.pose.position.x, robot_pose.pose.position.y);
-    current_region_msg.data = regionIdToUInt8(current_region);
+  try {
+    const auto transform = tf_->lookupTransform(
+      global_frame_,
+      robot_base_frame_,
+      tf2::TimePointZero,
+      tf2::durationFromSec(transform_tolerance_));
+
+    const auto & position = transform.transform.translation;
+    const std::string region = findRegion(position.x, position.y);
+
+    msg.data = regionIdToUInt8(region);
+
+  } catch (const std::exception & e) {
+    RCLCPP_WARN_THROTTLE(logger_, *clock_, 2000, "Failed to get robot pose: %s", e.what());
   }
 
-  current_region_pub_->publish(current_region_msg);
+  current_region_pub_->publish(msg);
 }
 
 // 重要：规划路线
-nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(
+nav_msgs::msg::Path TopologyGlobalPlanner::plan(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal,
   std::function<bool()> cancel_checker)
 {
-  if (!inner_planner_) {
-    throw std::runtime_error("Inner planner is null in TopologyGlobalPlanner::createPlan");
-  }
-
-  cancel_checker_ = std::move(cancel_checker);
+  if (!grid_planner_) {throw std::runtime_error("GridPlanner is not initialized");}
+    cancel_checker_ = cancel_checker ? std::move(cancel_checker) : std::function<bool()>([]() { return false; });
 
   const auto start_global = normalizePoseFrame(start);
   const auto goal_global = normalizePoseFrame(goal);
@@ -394,5 +358,3 @@ nav_msgs::msg::Path TopologyGlobalPlanner::createPlan(
 }
   
 }  // namespace topology_global_planner
-
-PLUGINLIB_EXPORT_CLASS(topology_global_planner::TopologyGlobalPlanner, nav2_core::GlobalPlanner)

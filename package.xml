@@ -9,11 +9,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclcpp</depend>
-  <depend>rclcpp_lifecycle</depend>
-  <depend>pluginlib</depend>
-  <depend>nav2_core</depend>
   <depend>nav2_costmap_2d</depend>
-  <depend>nav2_util</depend>
   <depend>nav_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>tf2</depend>
@@ -23,10 +19,7 @@
   <depend>visualization_msgs</depend>
   <depend>std_msgs</depend>
 
-  <exec_depend>nav2_navfn_planner</exec_depend>
-
   <export>
     <build_type>ament_cmake</build_type>
-    <nav2_core plugin="${prefix}/topology_global_planner_plugin.xml"/>
   </export>
 </package>

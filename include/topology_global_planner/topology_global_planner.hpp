@@ -7,13 +7,13 @@
 #include <unordered_map>
 #include <vector>
 
+#include "topology_global_planner/algo/grid/grid_planner.hpp"
+
+#include "nav2_costmap_2d/costmap_2d.hpp"
+#include "topology_global_planner/algo/grid/grid_planner.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
-#include "nav2_core/global_planner.hpp"
-#include "nav2_costmap_2d/costmap_2d_ros.hpp"
 #include "nav_msgs/msg/path.hpp"
-#include "pluginlib/class_loader.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "tf2_ros/buffer.h"
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "std_msgs/msg/string.hpp"
@@ -57,28 +57,26 @@ struct TopologySearchResult
 };
 
 
-class TopologyGlobalPlanner : public nav2_core::GlobalPlanner
+class TopologyGlobalPlanner
 {
 public:
-  TopologyGlobalPlanner();
-  ~TopologyGlobalPlanner() override = default;
+  TopologyGlobalPlanner() = default;
+  ~TopologyGlobalPlanner();
 
-  void configure(
-    const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
-    std::string name,
+  void initialize(
+    rclcpp::Node::SharedPtr node,
     std::shared_ptr<tf2_ros::Buffer> tf,
-    std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros
-  ) override;
+    nav2_costmap_2d::Costmap2D * costmap,
+    std::string global_frame,
+    std::string robot_base_frame,
+    std::string name = "TopoPlanner");
 
-  void cleanup() override;
-  void activate() override;
-  void deactivate() override;
-
-  nav_msgs::msg::Path createPlan(
+  nav_msgs::msg::Path plan(
     const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal,
-    std::function<bool()> cancel_checker
-  ) override;
+    std::function<bool()> cancel_checker = []() {
+      return false;
+    });
 
 private:
   bool loadTopologyYaml(const std::string & yaml_path);
@@ -145,9 +143,8 @@ private:
     double cost{1.0};
   };
 
-  rclcpp_lifecycle::LifecycleNode::SharedPtr node_;
+  rclcpp::Node::SharedPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
-  std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
   nav2_costmap_2d::Costmap2D * costmap_{nullptr};
   rclcpp::Logger logger_{rclcpp::get_logger("TopologyGlobalPlanner")};
   rclcpp::Clock::SharedPtr clock_;
@@ -168,6 +165,7 @@ private:
 
   std::string name_;
   std::string global_frame_;
+  std::string robot_base_frame_;
 
   std::string topology_yaml_;
   bool use_topology_{true};
@@ -183,13 +181,10 @@ private:
   double blocked_goal_reset_distance_{0.50};
   double blocked_connector_cost_{999.0};
 
-  std::string inner_planner_plugin_{"nav2_navfn_planner::NavfnPlanner"};
-  std::string inner_planner_name_{"InnerPlanner"};
-  pluginlib::ClassLoader<nav2_core::GlobalPlanner> inner_planner_loader_;
-  nav2_core::GlobalPlanner::Ptr inner_planner_;
-  std::function<bool()> cancel_checker_{[]() {return false;}};
-  bool inner_planner_configured_{false};
-  bool inner_planner_active_{false};
+  std::unique_ptr<grid::GridPlanner> grid_planner_;
+  std::function<bool()> cancel_checker_{
+    []() { return false; }
+  };
 
   std::vector<Region> regions_;
   std::vector<Connector> connectors_;

@@ -1,3 +1,4 @@
+
 cmake_minimum_required(VERSION 3.8)
 project(topology_global_planner)
 
@@ -7,11 +8,7 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(rclcpp_lifecycle REQUIRED)
-find_package(pluginlib REQUIRED)
-find_package(nav2_core REQUIRED)
 find_package(nav2_costmap_2d REQUIRED)
-find_package(nav2_util REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
@@ -21,31 +18,32 @@ find_package(yaml-cpp REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
-set(PLUGIN_LIB_NAME ${PROJECT_NAME}_plugin)
+set(TOPO_LIB_NAME ${PROJECT_NAME}_core)
 
-add_library(${PLUGIN_LIB_NAME} SHARED
-  src/planner_lifecycle.cpp
-  src/topology_io.cpp
-  src/geometry_utils.cpp
-  src/topology_search.cpp
-  src/portal_optimizer.cpp
-  src/path_planning.cpp
+add_library(${TOPO_LIB_NAME} SHARED
+  # Core
+  src/core/planner_lifecycle.cpp
+  src/core/path_planning.cpp
+  # Topology
+  src/algo/topology/topology_io.cpp
+  src/algo/topology/topology_search.cpp
+  src/algo/topology/portal_optimizer.cpp
+  src/algo/topology/geometry_utils.cpp
+  # Grid
+  src/algo/grid/navfn.cpp
+  src/algo/grid/grid_planner.cpp
 )
 
-target_include_directories(${PLUGIN_LIB_NAME} PUBLIC
+target_include_directories(${TOPO_LIB_NAME} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
 
-target_compile_features(${PLUGIN_LIB_NAME} PUBLIC cxx_std_17)
+target_compile_features(${TOPO_LIB_NAME} PUBLIC cxx_std_17)
 
-ament_target_dependencies(${PLUGIN_LIB_NAME}
+ament_target_dependencies(${TOPO_LIB_NAME}
   rclcpp
-  rclcpp_lifecycle
-  pluginlib
-  nav2_core
   nav2_costmap_2d
-  nav2_util
   nav_msgs
   geometry_msgs
   tf2
@@ -55,9 +53,12 @@ ament_target_dependencies(${PLUGIN_LIB_NAME}
   std_msgs
 )
 
-pluginlib_export_plugin_description_file(nav2_core topology_global_planner_plugin.xml)
+target_link_libraries(${TOPO_LIB_NAME}
+  yaml-cpp
+)
 
-install(TARGETS ${PLUGIN_LIB_NAME}
+install(TARGETS
+  ${TOPO_LIB_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -67,23 +68,16 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
-install(DIRECTORY config
-  DESTINATION share/${PROJECT_NAME}
-)
-
-install(FILES topology_global_planner_plugin.xml
-  DESTINATION share/${PROJECT_NAME}
+install(DIRECTORY config/
+  DESTINATION share/${PROJECT_NAME}/config
 )
 
 ament_export_include_directories(include)
-ament_export_libraries(${PLUGIN_LIB_NAME})
+ament_export_libraries(${TOPO_LIB_NAME})
+
 ament_export_dependencies(
   rclcpp
-  rclcpp_lifecycle
-  pluginlib
-  nav2_core
   nav2_costmap_2d
-  nav2_util
   nav_msgs
   geometry_msgs
   tf2
@@ -91,10 +85,6 @@ ament_export_dependencies(
   tf2_geometry_msgs
   visualization_msgs
   std_msgs
-)
-
-target_link_libraries(${PLUGIN_LIB_NAME}
-  yaml-cpp
 )
 
 ament_package()

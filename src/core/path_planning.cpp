@@ -6,8 +6,6 @@
 #include <stdexcept>
 #include <utility>
 
-#include "nav2_util/node_utils.hpp"
-#include "pluginlib/class_list_macros.hpp"
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2/time.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -30,16 +28,15 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makeInnerPlannerPath(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal)
 {
-  auto path = inner_planner_->createPlan(start, goal, cancel_checker_);
+  if (!grid_planner_) {throw std::runtime_error("GridPlanner is not initialized");}
+  auto path = grid_planner_->plan(start, goal, cancel_checker_);
+
   if (!path.poses.empty()) {
-    path.header.frame_id = path.header.frame_id.empty() ? global_frame_ : path.header.frame_id;
-    if (clock_) {
-      path.header.stamp = clock_->now();
-    }
+    if (path.header.frame_id.empty()) {path.header.frame_id = global_frame_;}
+    if (clock_) {path.header.stamp = clock_->now();}
   }
   return path;
 }
-
 
 nav_msgs::msg::Path TopologyGlobalPlanner::fallbackDirectPlan(
   const geometry_msgs::msg::PoseStamped & start,
