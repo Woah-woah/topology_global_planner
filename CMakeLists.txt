@@ -8,7 +8,7 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(nav2_costmap_2d REQUIRED)
+find_package(map_server REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
@@ -43,7 +43,7 @@ target_compile_features(${TOPO_LIB_NAME} PUBLIC cxx_std_17)
 
 ament_target_dependencies(${TOPO_LIB_NAME}
   rclcpp
-  nav2_costmap_2d
+  map_server
   nav_msgs
   geometry_msgs
   tf2
@@ -77,7 +77,7 @@ ament_export_libraries(${TOPO_LIB_NAME})
 
 ament_export_dependencies(
   rclcpp
-  nav2_costmap_2d
+  map_server
   nav_msgs
   geometry_msgs
   tf2

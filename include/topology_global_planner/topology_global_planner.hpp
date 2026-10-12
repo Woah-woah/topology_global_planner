@@ -9,7 +9,7 @@
 
 #include "topology_global_planner/algo/grid/grid_planner.hpp"
 
-#include "nav2_costmap_2d/costmap_2d.hpp"
+#include "map_server/costmap_2d.hpp"
 #include "topology_global_planner/algo/grid/grid_planner.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
@@ -66,7 +66,7 @@ public:
   void initialize(
     rclcpp::Node::SharedPtr node,
     std::shared_ptr<tf2_ros::Buffer> tf,
-    nav2_costmap_2d::Costmap2D * costmap,
+    map_server::Costmap2D * costmap,
     std::string global_frame,
     std::string robot_base_frame,
     std::string name = "TopoPlanner");
@@ -145,7 +145,7 @@ private:
 
   rclcpp::Node::SharedPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
-  nav2_costmap_2d::Costmap2D * costmap_{nullptr};
+  map_server::Costmap2D * costmap_{nullptr};
   rclcpp::Logger logger_{rclcpp::get_logger("TopologyGlobalPlanner")};
   rclcpp::Clock::SharedPtr clock_;
 

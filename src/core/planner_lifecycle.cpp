@@ -48,7 +48,7 @@ namespace topology_global_planner
 void TopologyGlobalPlanner::initialize(
   rclcpp::Node::SharedPtr node,
   std::shared_ptr<tf2_ros::Buffer> tf,
-  nav2_costmap_2d::Costmap2D * costmap,
+  map_server::Costmap2D * costmap,
   std::string global_frame,
   std::string robot_base_frame,
   std::string name)

@@ -9,13 +9,13 @@
 #include <vector>
 #include <limits>
 
-#include "nav2_costmap_2d/cost_values.hpp"
+#include "map_server/cost_values.hpp"
 
 namespace topology_global_planner::grid
 {
 
 GridPlanner::GridPlanner(
-  nav2_costmap_2d::Costmap2D * costmap,
+  map_server::Costmap2D * costmap,
   const std::string & global_frame,
   rclcpp::Clock::SharedPtr clock,
   Options options)
@@ -58,7 +58,7 @@ nav_msgs::msg::Path GridPlanner::plan(
   std::vector<unsigned char> map_data;
 
   {
-    std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t>
+    std::unique_lock<map_server::Costmap2D::mutex_t>
       lock(*costmap_->getMutex());
 
     nx = costmap_->getSizeInCellsX();
@@ -111,7 +111,7 @@ nav_msgs::msg::Path GridPlanner::plan(
 
   if (options_.tolerance == 0.0 &&
       map_data[static_cast<size_t>(gy) * nx + gx] ==
-        nav2_costmap_2d::LETHAL_OBSTACLE) {
+        map_server::LETHAL_OBSTACLE) {
     throw std::runtime_error("GridPlanner: goal occupied");
   }
 
@@ -139,7 +139,7 @@ nav_msgs::msg::Path GridPlanner::plan(
 
   // 只在本地快照中清除机器人起点，不修改真实 Costmap
   map_data[static_cast<size_t>(sy) * nx + sx] =
-    nav2_costmap_2d::FREE_SPACE;
+    map_server::FREE_SPACE;
 
   navfn_->setCostmap(map_data.data(), true, options_.allow_unknown);
 
