@@ -41,7 +41,7 @@
 // Path calc has sanity check that it succeeded
 //
 
-#include "topology_global_planner/algo/grid/navfn.hpp"
+#include "topology_global_planner/grid/navfn.hpp"
 
 #include <algorithm>
 #include <stdexcept>

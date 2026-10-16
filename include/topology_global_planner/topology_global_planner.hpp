@@ -7,10 +7,10 @@
 #include <unordered_map>
 #include <vector>
 
-#include "topology_global_planner/algo/grid/grid_planner.hpp"
+#include "topology_global_planner/grid/grid_planner.hpp"
 
 #include "map_server/costmap_2d.hpp"
-#include "topology_global_planner/algo/grid/grid_planner.hpp"
+#include "topology_global_planner/grid/grid_planner.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "rclcpp/rclcpp.hpp"

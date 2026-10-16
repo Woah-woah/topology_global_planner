@@ -89,24 +89,31 @@ nav_msgs::msg::Path
 topology_global_planner/
 ├── CMakeLists.txt
 ├── package.xml
-├── topology_global_planner_plugin.xml
 ├── README.md
-├── MODULARIZATION.md
 ├── config/
-│   ├── nav2_params_snippet.yaml
-│   ├── topology.yaml
+│   ├── t1.yaml
 │   └── topo.yaml
 ├── include/
 │   └── topology_global_planner/
-│       └── topology_global_planner.hpp
+│       ├── topology_global_planner.hpp
+│       └── grid/
+│           ├── grid_planner.hpp
+│           └── navfn.hpp
 └── src/
-    ├── planner_lifecycle.cpp
-    ├── topology_io.cpp
-    ├── geometry_utils.cpp
-    ├── topology_search.cpp
-    ├── portal_optimizer.cpp
-    └── path_planning.cpp
+    ├── core/
+    │   ├── planner_lifecycle.cpp
+    │   └── path_planning.cpp
+    ├── topology/
+    │   ├── topology_io.cpp
+    │   ├── geometry_utils.cpp
+    │   ├── topology_search.cpp
+    │   └── portal_optimizer.cpp
+    └── grid/
+        ├── grid_planner.cpp
+        └── navfn.cpp
 ```
+
+`src/` 按职责保留一层分组：`core/` 负责规划器入口与路径编排，`topology/` 负责拓扑处理，`grid/` 负责栅格规划。
 
 各文件职责如下：
 
@@ -118,7 +125,6 @@ topology_global_planner/
 | `topology_search.cpp` | 在 region graph 上做拓扑搜索，得到 region path 和 connector 序列 |
 | `portal_optimizer.cpp` | portal 采样、粗采样/细采样、调用 InnerPlanner 评估候选点组合 |
 | `path_planning.cpp` | 调用 InnerPlanner、拼接路径、fallback、frame 转换、yaw 处理 |
-| `MODULARIZATION.md` | 分模块说明，主要给后续维护者看 |
 
 ---
 

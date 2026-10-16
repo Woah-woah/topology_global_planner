@@ -1,5 +1,5 @@
 
-#include "topology_global_planner/algo/grid/grid_planner.hpp"
+#include "topology_global_planner/grid/grid_planner.hpp"
 
 #include <algorithm>
 #include <cmath>

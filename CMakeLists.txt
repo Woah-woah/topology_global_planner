@@ -22,16 +22,16 @@ set(TOPO_LIB_NAME ${PROJECT_NAME}_core)
 
 add_library(${TOPO_LIB_NAME} SHARED
   # Core
-  src/core/planner_lifecycle.cpp
-  src/core/path_planning.cpp
+  src/planner_lifecycle.cpp
+  src/path_planning.cpp
   # Topology
-  src/algo/topology/topology_io.cpp
-  src/algo/topology/topology_search.cpp
-  src/algo/topology/portal_optimizer.cpp
-  src/algo/topology/geometry_utils.cpp
+  src/topology/topology_io.cpp
+  src/topology/topology_search.cpp
+  src/topology/portal_optimizer.cpp
+  src/topology/geometry_utils.cpp
   # Grid
-  src/algo/grid/navfn.cpp
-  src/algo/grid/grid_planner.cpp
+  src/grid/navfn.cpp
+  src/grid/grid_planner.cpp
 )
 
 target_include_directories(${TOPO_LIB_NAME} PUBLIC

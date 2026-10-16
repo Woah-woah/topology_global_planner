@@ -10,7 +10,7 @@
 #include "map_server/costmap_2d.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#include "topology_global_planner/algo/grid/navfn.hpp"
+#include "topology_global_planner/grid/navfn.hpp"
 
 namespace topology_global_planner::grid
 {
