@@ -21,15 +21,15 @@ find_package(std_msgs REQUIRED)
 set(TOPO_LIB_NAME ${PROJECT_NAME}_core)
 
 add_library(${TOPO_LIB_NAME} SHARED
-  # Core
+  # 规划入口
   src/planner_lifecycle.cpp
   src/path_planning.cpp
-  # Topology
+  # 拓扑搜索与几何
   src/topology/topology_io.cpp
   src/topology/topology_search.cpp
   src/topology/portal_optimizer.cpp
   src/topology/geometry_utils.cpp
-  # Grid
+  # 栅格规划
   src/grid/navfn.cpp
   src/grid/grid_planner.cpp
 )
@@ -86,5 +86,6 @@ ament_export_dependencies(
   visualization_msgs
   std_msgs
 )
+
 
 ament_package()

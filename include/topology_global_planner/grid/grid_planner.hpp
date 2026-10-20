@@ -1,4 +1,4 @@
-// 负责读取 Costmap、坐标转换、调用 NavFn，最终输出 nav_msgs::Path
+// 读取代价地图并生成栅格路径
 #pragma once
 
 #include <functional>
@@ -15,6 +15,12 @@
 namespace topology_global_planner::grid
 {
 
+enum class GoalPolicy
+{
+  EXACT,
+  WITHIN_TOLERANCE
+};
+
 class GridPlanner
 {
 public:
@@ -26,15 +32,14 @@ public:
     bool use_final_approach_orientation{true};
   };
 
-  GridPlanner(
-    map_server::Costmap2D * costmap,
+  GridPlanner(map_server::Costmap2D * costmap,
     const std::string & global_frame,
     rclcpp::Clock::SharedPtr clock,
     Options options);
 
-  nav_msgs::msg::Path plan(
-    const geometry_msgs::msg::PoseStamped & start,
+  nav_msgs::msg::Path plan(const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal,
+    GoalPolicy goal_policy,
     std::function<bool()> cancel_checker);
 
 private:
@@ -46,4 +51,4 @@ private:
   std::unique_ptr<NavFn> navfn_;
 };
 
-}  // namespace topology_global_planner::grid
+}

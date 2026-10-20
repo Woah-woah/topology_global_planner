@@ -2,7 +2,7 @@
 <package format="3">
   <name>topology_global_planner</name>
   <version>0.2.0</version>
-  <description>Weak-constraint Region-Connector topology wrapper planner for Nav2. It performs topology search before delegating each segment to an inner Nav2 global planner.</description>
+  <description>Structured Region-Connector planning with directed segment boundaries.</description>
   <maintainer email="todo@example.com">origin_nav</maintainer>
   <license>Apache-2.0</license>
 

@@ -40,13 +40,12 @@ uint8_t regionIdToUInt8(const std::string & region_id)
   return static_cast<uint8_t>(region_number);
 }
 
-}  // namespace
+}
 
 namespace topology_global_planner
 {
 
-void TopologyGlobalPlanner::initialize(
-  rclcpp::Node::SharedPtr node,
+void TopologyGlobalPlanner::initialize(rclcpp::Node::SharedPtr node,
   std::shared_ptr<tf2_ros::Buffer> tf,
   map_server::Costmap2D * costmap,
   std::string global_frame,
@@ -54,7 +53,8 @@ void TopologyGlobalPlanner::initialize(
   std::string name)
 {
   if (!node || !tf || !costmap || global_frame.empty() || robot_base_frame.empty()) {
-    throw std::invalid_argument("TopologyGlobalPlanner: invalid initialization arguments");}
+    throw std::invalid_argument("TopologyGlobalPlanner: invalid initialization arguments");
+  }
 
   node_ = std::move(node);
   tf_ = std::move(tf);
@@ -65,11 +65,8 @@ void TopologyGlobalPlanner::initialize(
   clock_ = node_->get_clock();
   logger_ = node_->get_logger();
 
-  // 声明参数的函数
-  auto declare = [this](
-      const std::string & key,
-      const rclcpp::ParameterValue & default_value)
-  {
+  // 参数统一加上规划器名称前缀
+  auto declare = [this](const std::string & key, const rclcpp::ParameterValue & default_value) {
     const auto full_name = name_ + "." + key;
     if (!node_->has_parameter(full_name)) {
       node_->declare_parameter(full_name, default_value);
@@ -78,18 +75,15 @@ void TopologyGlobalPlanner::initialize(
 
   declare("topology_yaml", rclcpp::ParameterValue(std::string("")));
   declare("use_topology", rclcpp::ParameterValue(true));
-  declare("fallback_to_inner_planner", rclcpp::ParameterValue(true));
   declare("allow_nearest_region_fallback", rclcpp::ParameterValue(false));
   declare("region_boundary_tolerance", rclcpp::ParameterValue(0.03));
   declare("transform_tolerance", rclcpp::ParameterValue(0.1));
-  declare("duplicate_pose_tolerance", rclcpp::ParameterValue(0.02));
   declare("max_nearest_region_distance", rclcpp::ParameterValue(1.0));
-  declare("enforce_region_constraint", rclcpp::ParameterValue(true));
   declare("region_constraint_tolerance", rclcpp::ParameterValue(0.15));
-  declare("blocked_goal_reset_distance", rclcpp::ParameterValue(0.50));
-  declare("blocked_connector_cost", rclcpp::ParameterValue(999.0));
+  declare("connector_path_half_width", rclcpp::ParameterValue(0.8));
+  declare("connector_entry_clearance", rclcpp::ParameterValue(0.5));
 
-  // 独立 GridPlanner 参数
+  // 栅格规划参数
   declare("grid.tolerance", rclcpp::ParameterValue(0.2));
   declare("grid.use_astar", rclcpp::ParameterValue(false));
   declare("grid.allow_unknown", rclcpp::ParameterValue(true));
@@ -97,75 +91,53 @@ void TopologyGlobalPlanner::initialize(
 
   node_->get_parameter(name_ + ".topology_yaml", topology_yaml_);
   node_->get_parameter(name_ + ".use_topology", use_topology_);
-  node_->get_parameter(name_ + ".fallback_to_inner_planner", fallback_to_inner_planner_);
   node_->get_parameter(name_ + ".allow_nearest_region_fallback", allow_nearest_region_fallback_);
   node_->get_parameter(name_ + ".region_boundary_tolerance", region_boundary_tolerance_);
   node_->get_parameter(name_ + ".transform_tolerance", transform_tolerance_);
-  node_->get_parameter(name_ + ".duplicate_pose_tolerance", duplicate_pose_tolerance_);
   node_->get_parameter(name_ + ".max_nearest_region_distance", max_nearest_region_distance_);
-  node_->get_parameter(name_ + ".enforce_region_constraint", enforce_region_constraint_);
   node_->get_parameter(name_ + ".region_constraint_tolerance", region_constraint_tolerance_);
-  node_->get_parameter(name_ + ".blocked_goal_reset_distance", blocked_goal_reset_distance_);
-  node_->get_parameter(name_ + ".blocked_connector_cost", blocked_connector_cost_);
+  node_->get_parameter(name_ + ".connector_path_half_width", connector_path_half_width_);
+  node_->get_parameter(name_ + ".connector_entry_clearance", connector_entry_clearance_);
+  if (!std::isfinite(connector_entry_clearance_) || connector_entry_clearance_ <= 0.0 ||
+      !std::isfinite(connector_path_half_width_) || connector_path_half_width_ <= 0.0 ||
+      !std::isfinite(region_constraint_tolerance_) || region_constraint_tolerance_ < 0.0)
+  {
+    throw std::invalid_argument("Invalid topology corridor width or region tolerance");
+  }
 
   grid::GridPlanner::Options options;
   node_->get_parameter(name_ + ".grid.tolerance", options.tolerance);
   node_->get_parameter(name_ + ".grid.use_astar", options.use_astar);
   node_->get_parameter(name_ + ".grid.allow_unknown", options.allow_unknown);
-  node_->get_parameter(name_ + ".grid.use_final_approach_orientation", options.use_final_approach_orientation);
+  node_->get_parameter(
+    name_ + ".grid.use_final_approach_orientation", options.use_final_approach_orientation);
 
   grid_planner_ = std::make_unique<grid::GridPlanner>(costmap_, global_frame_, clock_, options);
   RCLCPP_INFO(logger_, "Standalone GridPlanner initialized");
 
   connector_debug_markers_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
-    "TopoPlanner/connector_debug_markers",
-    rclcpp::QoS(1).transient_local().reliable()
-  );
+    "TopoPlanner/connector_debug_markers", rclcpp::QoS(1).transient_local().reliable());
 
-  need_action_pub_ = node_->create_publisher<std_msgs::msg::String>(
-    "TopoPlanner/need_action",
-    rclcpp::QoS(1).transient_local().reliable()
-  );
-
-  current_region_pub_ = node_->create_publisher<std_msgs::msg::UInt8>(
-    "/TopoPlanner/current_region",
-    rclcpp::QoS(10)
-  );
-
-  need_action_timer_ = node_->create_wall_timer(
-    std::chrono::milliseconds(100),
-    std::bind(&TopologyGlobalPlanner::publishNeedAction, this));
+  current_region_pub_ =
+    node_->create_publisher<std_msgs::msg::UInt8>("/TopoPlanner/current_region", rclcpp::QoS(10));
 
   current_region_timer_ = node_->create_wall_timer(
-    std::chrono::milliseconds(100),
-    std::bind(&TopologyGlobalPlanner::publishCurrentRegion, this));
+    std::chrono::milliseconds(100), std::bind(&TopologyGlobalPlanner::publishCurrentRegion, this));
 
-  block_cmd_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
-    "/TopoPlanner/block_cmd",
-    rclcpp::QoS(1).reliable(),
-    std::bind(&TopologyGlobalPlanner::blockCmdCallback, this, std::placeholders::_1));
-
-
-  if (use_topology_ && !topology_yaml_.empty()) {
-    if (loadTopologyYaml(topology_yaml_)) {            // 从yaml中读取regions connectors 失败回退
-      buildGraph();
-      publishConnectorDebugMarkers();
-    } else {
-      RCLCPP_WARN(node_->get_logger(), "Failed to load topology yaml. Topology layer will be bypassed; inner planner will be used directly.");
-      use_topology_ = false;
+  if (use_topology_) {
+    if (topology_yaml_.empty() || !loadTopologyYaml(topology_yaml_) || regions_.empty() ||
+        connectors_.empty())
+    {
+      throw std::runtime_error("Topology is enabled but its configuration is invalid");
     }
-  } else {
-    RCLCPP_WARN(
-      node_->get_logger(), "Topology disabled or topology_yaml is empty. Inner planner will be used directly.");
+    buildGraph();
+    publishConnectorDebugMarkers();
   }
-  
 }
 
 TopologyGlobalPlanner::~TopologyGlobalPlanner()
 {
-  need_action_timer_.reset();
   current_region_timer_.reset();
-  block_cmd_sub_.reset();
   grid_planner_.reset();
 }
 
@@ -179,8 +151,7 @@ void TopologyGlobalPlanner::publishCurrentRegion()
   msg.data = 0;
 
   try {
-    const auto transform = tf_->lookupTransform(
-      global_frame_,
+    const auto transform = tf_->lookupTransform(global_frame_,
       robot_base_frame_,
       tf2::TimePointZero,
       tf2::durationFromSec(transform_tolerance_));
@@ -197,164 +168,84 @@ void TopologyGlobalPlanner::publishCurrentRegion()
   current_region_pub_->publish(msg);
 }
 
-// 重要：规划路线
-nav_msgs::msg::Path TopologyGlobalPlanner::plan(
-  const geometry_msgs::msg::PoseStamped & start,
+TopologyPlan TopologyGlobalPlanner::plan(const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal,
+  const std::optional<Segment> & active_connector,
   std::function<bool()> cancel_checker)
 {
-  if (!grid_planner_) {throw std::runtime_error("GridPlanner is not initialized");}
-    cancel_checker_ = cancel_checker ? std::move(cancel_checker) : std::function<bool()>([]() { return false; });
+  if (!grid_planner_) {
+    throw std::runtime_error("GridPlanner is not initialized");
+  }
 
+  cancel_checker_ = cancel_checker ? std::move(cancel_checker) : []() {
+    return false;
+  };
   const auto start_global = normalizePoseFrame(start);
   const auto goal_global = normalizePoseFrame(goal);
 
-  // 新拓扑搜索前，先根据位置更新 planned -> active 或退回入口的 active 解除。
-  updateConnectorEntryLatch(start_global);
-  
-  if (!use_topology_ || regions_.empty() || connectors_.empty()) {
-    // Connector 通过状态已经锁存时，直接规划也不能提前清除 Connector ID。
-    if (!is_on_connector_) {
-      clearPlannedConnector();
-    }
-    publishNeedAction();
-    return makeInnerPlannerPath(start_global, goal_global);
-  }
+  TopologyPlan prefix;
+  auto route_start = start_global;
+  std::string start_region;
 
-  bool new_goal = !has_last_goal_;
-  if (has_last_goal_) {
-    const double goal_change_distance = std::hypot(
-      goal_global.pose.position.x - last_goal_.pose.position.x,
-      goal_global.pose.position.y - last_goal_.pose.position.y);
-    new_goal = goal_change_distance > blocked_goal_reset_distance_;
-  }
-
-  if (new_goal) {
-    restoreAllConnectorCosts();
-  }
-
-  last_goal_ = goal_global;
-  has_last_goal_ = true;
-  
-  // 判断起终点在哪个区域
-  const std::string start_region = findRegion(start_global.pose.position.x, start_global.pose.position.y);
-  const std::string goal_region = findRegion(goal_global.pose.position.x, goal_global.pose.position.y);
-
-  // 已经进入 Connector 后，后续拓扑必须从当前 Connector 的出口 Region 开始。
-  // 机器人当下可能仍被 findRegion() 判在入口 Region，但路径会先强制补到 exit。
-  std::string topology_start_region = start_region;
-  auto topology_start_pose = start_global;
-  if (is_on_connector_ && !active_region_id_.empty()) {
-    topology_start_region = active_region_id_;
-    topology_start_pose.pose.position.x = active_exit_point_.x;
-    topology_start_pose.pose.position.y = active_exit_point_.y;
-  }
-
-  // // 起点终点有一个不在region内就回退
-  // if (start_region.empty() || goal_region.empty()) {
-  //   planned_connector_id_.clear();
-  //   return fallbackDirectPlan(
-  //     start_global, goal_global,
-  //     "start or goal is outside all topology regions: start_region='" + start_region +
-  //     "', goal_region='" + goal_region + "'");
-  // }
-
-  // 起终点在同一个region内且当前不在connector上就回退
-  if (start_region == goal_region && !is_on_connector_) {
-    clearPlannedConnector();
-    publishNeedAction();
-    RCLCPP_DEBUG(
-      node_->get_logger(), "Start and goal are in the same region '%s'. Using inner planner directly.",
-      start_region.c_str());
-    return makeInnerPlannerPath(start_global, goal_global);
-  }
-
-  // 找不到拓扑可通行路径就回退
-  const auto topo_result = searchTopology(
-    topology_start_region, goal_region, topology_start_pose, goal_global);
-  if (!topo_result.success) {
-    // 搜索失败不代表已经通过 Connector，保留正在通过时的 ID 锁存。
-    if (!is_on_connector_) {
-      clearPlannedConnector();
-    }
-    publishNeedAction();
-    return fallbackDirectPlan(
-      start_global, goal_global,
-      "no topology route from '" + topology_start_region + "' to '" + goal_region + "'");
-  }
-
-  auto update_need_action = [this, &topo_result]() {
-    // 一旦进入 Connector，publishNeedAction() 优先发布 active_connector_id_。
-    // 即使新目标落回当前 region、拓扑结果不再包含 Connector，也不能覆盖当前 ID。
-    if (is_on_connector_) {
-      publishNeedAction();
-      return;
+  if (active_connector) {
+    // 已进入的通道先按原方向走到出口
+    // 换目标和重规划都不能绕过这一段
+    const auto & active = *active_connector;
+    const auto it = std::find_if(connectors_.begin(), connectors_.end(), [&](const Connector & c) {
+      return c.id == active.connector_id;
+    });
+    if (it == connectors_.end() || active.type != SegmentType::CONNECTOR) {
+      throw std::runtime_error("Unknown committed connector");
     }
 
-    // 尚未进入 Connector 时，拓扑路径中的第一个 Connector 就是当前要通过的 Connector。
-    clearPlannedConnector();
-    if (!topo_result.connector_indices.empty() && topo_result.region_path.size() >= 2) {
-      const int connector_index = topo_result.connector_indices.front();
-      if (connector_index >= 0 &&
-        static_cast<size_t>(connector_index) < connectors_.size())
-      {
-        const auto & connector = connectors_[static_cast<size_t>(connector_index)];
-        const auto & current_region = topo_result.region_path[0];
-        const auto & next_region = topo_result.region_path[1];
-
-        if (connector.from == current_region && connector.to == next_region) {
-          planned_wait_point_ = connector.portal_start;
-          planned_exit_point_ = connector.portal_end;
-        } else if (
-          connector.mode == "two_way" && connector.to == current_region &&
-          connector.from == next_region)
-        {
-          planned_wait_point_ = connector.portal_end;
-          planned_exit_point_ = connector.portal_start;
-        } else {
-          publishNeedAction();
-          return;
-        }
-
-        planned_connector_id_ = connector.id;
-        planned_next_region_id_ = next_region;
-        has_planned_connector_geometry_ = true;
-      }
+    const bool forward = it->from == active.from_region && it->to == active.to_region;
+    const bool reverse =
+      it->mode == "two_way" && it->to == active.from_region && it->from == active.to_region;
+    if (!forward && !reverse) {
+      throw std::runtime_error("Invalid committed connector direction");
     }
 
-    publishNeedAction();
-  };
+    const auto & wait = forward ? it->portal_start : it->portal_end;
+    const auto & exit = forward ? it->portal_end : it->portal_start;
 
-  // A* 分段规划可能耗时，先发布本轮选中的第一个 Connector ID。
-  update_need_action();
+    auto segment = active;
+    segment.wait_pose = makePoseFromPoint(wait, clock_->now());
+    segment.exit_pose = makePoseFromPoint(exit, clock_->now());
+    const double yaw = std::atan2(exit.y - wait.y, exit.x - wait.x);
+    setYaw(segment.wait_pose, yaw);
+    setYaw(segment.exit_pose, yaw);
 
-  
-  std::string region_log;
-  for (const auto & r : topo_result.region_path) {
-    if (!region_log.empty()) {
-      region_log += " -> ";
-    }
-    region_log += r;
+    segment.path = makeConnectorPath(start_global, segment);
+    prefix.segments.push_back(segment);
+    appendSegment(prefix.full_path, segment.path);
+    route_start = segment.exit_pose;
+    start_region = segment.to_region;
+  } else {
+    start_region = findRegion(route_start.pose.position.x, route_start.pose.position.y);
   }
-  RCLCPP_INFO(node_->get_logger(), "Topology route: %s", region_log.c_str());
-  
-  auto path = makePortalOptimizedTopologyPath(start_global, goal_global, topo_result);
 
-  // 路径生成过程中可能进入或完成 Connector。此时只发布当前状态，
-  // 不再从本轮的旧 topo_result 首段重建 planned connector。
-  publishNeedAction();
-
-  if (path.poses.empty() && fallback_to_inner_planner_) {  // fallback始终为true的情况
-    RCLCPP_WARN(node_->get_logger(), "Segmented topology planning failed. Falling back to direct inner planner from start to goal.");
-    // 未进入 Connector 时，回退路径不再经过计划中的 Connector。
-    // 如果已经进入，则继续发布 active_connector_id_ 直到真正通过。
-    if (!is_on_connector_) {
-      clearPlannedConnector();
-    }
-    publishNeedAction();
-    return makeInnerPlannerPath(start_global, goal_global);
+  if (!use_topology_) {
+    auto path = makeInnerPlannerPath(route_start, goal_global, grid::GoalPolicy::WITHIN_TOLERANCE);
+    Segment segment;
+    segment.path = path;
+    prefix.segments.push_back(std::move(segment));
+    appendSegment(prefix.full_path, path);
+    return prefix;
   }
-  return path;
+
+  const auto goal_region = findRegion(goal_global.pose.position.x, goal_global.pose.position.y);
+  if (start_region.empty() || goal_region.empty()) {
+    throw std::runtime_error("Start or goal is outside topology regions");
+  }
+
+  const auto topology = searchTopology(start_region, goal_region, route_start, goal_global);
+  if (!topology.success) {
+    throw std::runtime_error("No directed topology route");
+  }
+
+  auto suffix = makePortalOptimizedTopologyPath(route_start, goal_global, topology);
+  appendSegment(prefix.full_path, suffix.full_path);
+  prefix.segments.insert(prefix.segments.end(), suffix.segments.begin(), suffix.segments.end());
+  return prefix;
 }
-  
-}  // namespace topology_global_planner
+}

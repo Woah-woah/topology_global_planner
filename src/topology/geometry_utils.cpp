@@ -16,7 +16,9 @@ namespace topology_global_planner
 
 bool TopologyGlobalPlanner::hasRegion(const std::string & id) const
 {
-  return std::any_of(regions_.begin(), regions_.end(), [&](const Region & r) {return r.id == id;});
+  return std::any_of(regions_.begin(), regions_.end(), [&](const Region & r) {
+    return r.id == id;
+  });
 }
 
 std::string TopologyGlobalPlanner::findRegion(double x, double y) const
@@ -42,8 +44,10 @@ std::string TopologyGlobalPlanner::findRegion(double x, double y) const
 
   if (!boundary_candidates.empty()) {
     if (boundary_candidates.size() > 1) {
-      RCLCPP_DEBUG(
-        logger_, "Point (%.3f, %.3f) is on multiple region boundaries; choosing nearest centroid.", x, y);
+      RCLCPP_DEBUG(logger_,
+        "Point (%.3f, %.3f) is on multiple region boundaries; choosing nearest centroid.",
+        x,
+        y);
     }
     return chooseBestRegionByCentroid(x, y, boundary_candidates);
   }
@@ -63,9 +67,12 @@ std::string TopologyGlobalPlanner::findRegion(double x, double y) const
   }
 
   if (best_dist <= std::max(0.0, max_nearest_region_distance_)) {
-    RCLCPP_DEBUG(
-      logger_, "Point (%.3f, %.3f) is outside regions; using nearest region '%s' at %.3fm.",
-      x, y, best_id.c_str(), best_dist);
+    RCLCPP_DEBUG(logger_,
+      "Point (%.3f, %.3f) is outside regions; using nearest region '%s' at %.3fm.",
+      x,
+      y,
+      best_id.c_str(),
+      best_dist);
     return best_id;
   }
 
@@ -79,8 +86,9 @@ std::string TopologyGlobalPlanner::chooseBestRegionByCentroid(
   std::string best_id;
 
   for (const auto & id : candidates) {
-    const auto it = std::find_if(regions_.begin(), regions_.end(),
-      [&](const Region & r) {return r.id == id;});
+    const auto it = std::find_if(regions_.begin(), regions_.end(), [&](const Region & r) {
+      return r.id == id;
+    });
     if (it == regions_.end()) {
       continue;
     }
@@ -95,11 +103,12 @@ std::string TopologyGlobalPlanner::chooseBestRegionByCentroid(
   return best_id;
 }
 
-bool TopologyGlobalPlanner::pointInPolygon(double x, double y, const std::vector<Point2D> & polygon) const
+bool TopologyGlobalPlanner::pointInPolygon(
+  double x, double y, const std::vector<Point2D> & polygon) const
 {
-  // Standard ray casting. Horizontal edges are naturally ignored by the first condition,
-  // so no artificial epsilon is added to the denominator. Boundary handling is done
-  // separately in pointOnPolygonBoundary().
+  // 射线法判断点是否在多边形内
+  // 水平边由跨越条件排除
+  // 边界点另行判断
   bool inside = false;
   const size_t n = polygon.size();
   for (size_t i = 0, j = n - 1; i < n; j = i++) {
@@ -115,7 +124,8 @@ bool TopologyGlobalPlanner::pointInPolygon(double x, double y, const std::vector
   return inside;
 }
 
-bool TopologyGlobalPlanner::pointOnPolygonBoundary(double x, double y, const std::vector<Point2D> & polygon) const
+bool TopologyGlobalPlanner::pointOnPolygonBoundary(
+  double x, double y, const std::vector<Point2D> & polygon) const
 {
   return pointOnPolygonBoundary(x, y, polygon, region_boundary_tolerance_);
 }
@@ -136,9 +146,9 @@ bool TopologyGlobalPlanner::pointOnPolygonBoundary(
 
 const Region * TopologyGlobalPlanner::getRegionById(const std::string & id) const
 {
-  const auto it = std::find_if(
-    regions_.begin(), regions_.end(),
-    [&](const Region & r) {return r.id == id;});
+  const auto it = std::find_if(regions_.begin(), regions_.end(), [&](const Region & r) {
+    return r.id == id;
+  });
   if (it == regions_.end()) {
     return nullptr;
   }
@@ -160,22 +170,48 @@ bool TopologyGlobalPlanner::pointInRegionWithTolerance(
 bool TopologyGlobalPlanner::pathInsideRegionWithTolerance(
   const nav_msgs::msg::Path & path, const std::string & region_id, double tolerance) const
 {
-  if (region_id.empty()) {
-    return true;
+  if (region_id.empty() || path.poses.empty()) {
+    return false;
   }
-
+  auto previous = path.poses.front().pose.position;
   for (const auto & pose : path.poses) {
     const auto & p = pose.pose.position;
-    if (!pointInRegionWithTolerance(p.x, p.y, region_id, tolerance)) {
-      return false;
+    const int samples = std::max(
+      1, static_cast<int>(std::ceil(std::hypot(p.x - previous.x, p.y - previous.y) / 0.02)));
+    for (int i = 0; i <= samples; ++i) {
+      const double f = static_cast<double>(i) / samples;
+      const double x = previous.x + f * (p.x - previous.x);
+      const double y = previous.y + f * (p.y - previous.y);
+      if (!pointInRegionWithTolerance(x, y, region_id, tolerance)) {
+        return false;
+      }
+      // 区域重叠时也不允许普通路径穿过通道内部
+      // 入口和出口附近留给分段衔接
+      for (const auto & connector : connectors_) {
+        const auto & a = connector.portal_start;
+        const auto & b = connector.portal_end;
+        const double dx = b.x - a.x, dy = b.y - a.y;
+        const double length = std::hypot(dx, dy);
+        if (length <= 1e-6) {
+          return false;
+        }
+        const double along = ((x - a.x) * dx + (y - a.y) * dy) / length;
+        const double lateral = std::abs((x - a.x) * dy - (y - a.y) * dx) / length;
+        const double endpoint_margin = std::min(0.05, length * 0.1);
+        if (along > endpoint_margin && along < length - endpoint_margin &&
+            lateral < connector_path_half_width_)
+        {
+          return false;
+        }
+      }
     }
+    previous = p;
   }
 
   return true;
 }
 
-bool TopologyGlobalPlanner::pathInsideConnectorStrip(
-  const nav_msgs::msg::Path & path,
+bool TopologyGlobalPlanner::pathInsideConnectorStrip(const nav_msgs::msg::Path & path,
   const Point2D & wait,
   const Point2D & exit,
   double half_width) const
@@ -188,26 +224,26 @@ bool TopologyGlobalPlanner::pathInsideConnectorStrip(
     return false;
   }
 
+  double previous_t = -1.0;
   for (const auto & pose : path.poses) {
     const double px = pose.pose.position.x - wait.x;
     const double py = pose.pose.position.y - wait.y;
 
     const double t = (px * vx + py * vy) / length_sq;
 
-    // 不允许跑到 wait 后面或 exit 后面太远
-    if (t < -0.50 || t > 1.50) {
+    // 限制沿通道方向的位置和回退量
+    const double cell_slack = std::max(0.05, costmap_->getResolution()) / std::sqrt(length_sq);
+    if (t < -cell_slack || t > 1.0 + cell_slack || t + cell_slack < previous_t) {
       return false;
     }
 
+    previous_t = std::max(previous_t, t);
     const double clamped_t = std::clamp(t, 0.0, 1.0);
     const double proj_x = wait.x + clamped_t * vx;
     const double proj_y = wait.y + clamped_t * vy;
 
-    const double lateral_distance = euclidean(
-      pose.pose.position.x,
-      pose.pose.position.y,
-      proj_x,
-      proj_y);
+    const double lateral_distance =
+      euclidean(pose.pose.position.x, pose.pose.position.y, proj_x, proj_y);
 
     if (lateral_distance > half_width) {
       return false;
@@ -260,5 +296,4 @@ double TopologyGlobalPlanner::euclidean(double x1, double y1, double x2, double 
   return std::hypot(x1 - x2, y1 - y2);
 }
 
-
-}  // namespace topology_global_planner
+}

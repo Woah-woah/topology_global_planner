@@ -14,37 +14,39 @@
 namespace topology_global_planner
 {
 
-TopologySearchResult TopologyGlobalPlanner::searchTopology(
-  const std::string & start_region, 
+TopologySearchResult TopologyGlobalPlanner::searchTopology(const std::string & start_region,
   const std::string & goal_region,
   const geometry_msgs::msg::PoseStamped & start,
-  const geometry_msgs::msg::PoseStamped & goal
-) const {
+  const geometry_msgs::msg::PoseStamped & goal) const
+{
   TopologySearchResult result;
 
   struct QueueItem
   {
     double cost;
     std::string region;
-    bool operator>(const QueueItem & other) const {    // operator后的>表示重载>运算符
-      return cost > other.cost;                        // other是和当前对象比较的另一个对象 const指不改变当前对象的值
+
+    bool operator>(const QueueItem & other) const
+    {
+      return cost > other.cost;
     }
   };
 
-  std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<QueueItem>> open; // 优先队列: std::priority_queue<元素类型, 底层容器, 比较规则> 变量名;
-  std::unordered_map<std::string, double> dist;                                         // std::greater<QueueItem>小根堆 使用“大于”比较 open.top()弹出的是最小值
+  // 优先扩展累计代价最小的区域
+  std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<QueueItem>> open;
+  std::unordered_map<std::string, double> dist;
   std::unordered_map<std::string, std::string> parent_region;
   std::unordered_map<std::string, int> parent_connector;
 
   for (const auto & r : regions_) {
-    dist[r.id] = std::numeric_limits<double>::infinity();       //e.g. d["R3"] = 10.0 到每个region的cost
+    dist[r.id] = std::numeric_limits<double>::infinity();
   }
   dist[start_region] = 0.0;
   open.push(QueueItem{0.0, start_region});
 
   while (!open.empty()) {
     const auto current = open.top();
-    open.pop();                             // 弹出堆中最小对象
+    open.pop();
 
     if (current.cost > dist[current.region]) {
       continue;
@@ -93,7 +95,7 @@ TopologySearchResult TopologyGlobalPlanner::searchTopology(
   result.success = true;
   result.region_path = reversed_regions;
 
-  // 旧版本只保留一条路，如果C1 C2都可以走且cost相等，但是buildgraph的时候先从yaml中识别到C1,那么就算C2更优，
+  // 同一对区域有多个等价通道时再按通行距离选择
   const auto optimized_connectors = optimizeConnectorsForRegionPath(reversed_regions, start, goal);
 
   if (optimized_connectors.size() == reversed_connectors.size()) {
@@ -105,8 +107,7 @@ TopologySearchResult TopologyGlobalPlanner::searchTopology(
   return result;
 }
 
-
-// 适用于区域间多 connector 的情况
+// 沿区域序列选择总通行距离最短的通道组合
 std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
   const std::vector<std::string> & region_path,
   const geometry_msgs::msg::PoseStamped & start,
@@ -120,7 +121,7 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
   std::vector<std::vector<int>> layers;
   layers.reserve(step_count);
 
-  // 每段区域转移收集 cost 最低的候选 Connector
+  // 每次区域转移只保留代价最低的候选通道
   for (size_t step = 0; step < step_count; ++step) {
     const std::string & from_region = region_path[step];
     const std::string & to_region = region_path[step + 1];
@@ -153,9 +154,9 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
     layers.push_back(candidates);
   }
 
-  // 根据本次区域通过方向获得 wait 和 exit
-  auto get_wait_exit = [this, &region_path](size_t step, int idx, Point2D & wait, Point2D & exit) -> bool
-  {
+  // 根据通行方向确定入口和出口
+  auto get_wait_exit = [this, &region_path](
+                         size_t step, int idx, Point2D & wait, Point2D & exit) -> bool {
     const auto & c = connectors_[static_cast<size_t>(idx)];
     const auto & current_region = region_path[step];
     const auto & next_region = region_path[step + 1];
@@ -180,9 +181,7 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
   };
 
   auto pose_point_dist = [this](
-    const geometry_msgs::msg::PoseStamped & pose,
-    const Point2D & point)
-  {
+                           const geometry_msgs::msg::PoseStamped & pose, const Point2D & point) {
     return euclidean(pose.pose.position.x, pose.pose.position.y, point.x, point.y);
   };
 
@@ -196,7 +195,7 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
     parent[layer].assign(layers[layer].size(), -1);
   }
 
-  // 第一层：start -> wait -> exit
+  // 第一层计入起点到入口及通道内部距离
   for (size_t j = 0; j < layers[0].size(); ++j) {
     Point2D wait, exit;
     if (!get_wait_exit(0, layers[0][j], wait, exit)) {
@@ -206,7 +205,7 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
     dp[0][j] = pose_point_dist(start, wait) + point_dist(wait, exit);
   }
 
-  // 中间层：上一个 exit -> 当前 wait -> 当前 exit
+  // 中间层计入通道之间的衔接距离
   for (size_t layer = 1; layer < layer_count; ++layer) {
     for (size_t j = 0; j < layers[layer].size(); ++j) {
       const int cur_idx = layers[layer][j];
@@ -228,7 +227,8 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
           continue;
         }
 
-        const double candidate = dp[layer - 1][k] + point_dist(prev_exit, cur_wait) + point_dist(cur_wait, cur_exit);
+        const double candidate =
+          dp[layer - 1][k] + point_dist(prev_exit, cur_wait) + point_dist(cur_wait, cur_exit);
 
         if (candidate < dp[layer][j]) {
           dp[layer][j] = candidate;
@@ -238,7 +238,7 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
     }
   }
 
-  // 最后一层：最后一个 exit -> goal
+  // 最后一层加上出口到目标的距离
   double best_total = std::numeric_limits<double>::infinity();
   int best_last = -1;
   const size_t last_layer = layer_count - 1;
@@ -265,12 +265,13 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
     return {};
   }
 
-  // 回溯选中的 Connector
+  // 回溯各层选中的通道
   std::vector<int> selected(layer_count, -1);
   int cur = best_last;
 
   for (int layer = static_cast<int>(layer_count) - 1; layer >= 0; --layer) {
-    selected[static_cast<size_t>(layer)] = layers[static_cast<size_t>(layer)][static_cast<size_t>(cur)];
+    selected[static_cast<size_t>(layer)] =
+      layers[static_cast<size_t>(layer)][static_cast<size_t>(cur)];
     cur = parent[static_cast<size_t>(layer)][static_cast<size_t>(cur)];
 
     if (layer > 0 && cur < 0) {
@@ -281,4 +282,4 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
   return selected;
 }
 
-}  // namespace topology_global_planner
+}

@@ -47,25 +47,30 @@ bool TopologyGlobalPlanner::loadTopologyYaml(const std::string & yaml_path)
       connector.action = connector_node["action"].as<std::string>();
 
       if (connector.action != "down" && connector.action != "step") {
-        RCLCPP_WARN(logger_, "Connector '%s' has unknown action '%s'.",
-          connector.id.c_str(), connector.action.c_str());
+        RCLCPP_ERROR(logger_,
+          "Connector '%s' has unsupported action '%s'.",
+          connector.id.c_str(),
+          connector.action.c_str());
+        return false;
       }
 
       if (!hasRegion(connector.from) || !hasRegion(connector.to)) {
-        RCLCPP_ERROR(
-          logger_, "Connector '%s' references unknown region: from='%s', to='%s'",
-          connector.id.c_str(), connector.from.c_str(), connector.to.c_str());          // from & to的region不存在返回failure
+        RCLCPP_ERROR(logger_,
+          "Connector '%s' references unknown region: from='%s', to='%s'",
+          connector.id.c_str(),
+          connector.from.c_str(),
+          connector.to.c_str());
         return false;
       }
 
       connector.mode = connector_node["mode"].as<std::string>();
       if (!(connector.mode == "two_way" || connector.mode == "one_way")) {
-        RCLCPP_ERROR(
-          logger_, "Connector '%s' has invalid mode '%s'. Use two_way or one_way.",
-          connector.id.c_str(), connector.mode.c_str());
+        RCLCPP_ERROR(logger_,
+          "Connector '%s' has invalid mode '%s'. Use two_way or one_way.",
+          connector.id.c_str(),
+          connector.mode.c_str());
         return false;
-      }                                                                                  // mode必须用two_way或者one_way
-
+      }
 
       if (connector_node["portal"]) {
         const auto portal = connector_node["portal"];
@@ -85,7 +90,8 @@ bool TopologyGlobalPlanner::loadTopologyYaml(const std::string & yaml_path)
       connectors_.push_back(connector);
     }
   } catch (const std::exception & e) {
-    RCLCPP_ERROR(logger_, "Exception while loading topology yaml '%s': %s", yaml_path.c_str(), e.what());
+    RCLCPP_ERROR(
+      logger_, "Exception while loading topology yaml '%s': %s", yaml_path.c_str(), e.what());
     return false;
   }
 
@@ -94,7 +100,8 @@ bool TopologyGlobalPlanner::loadTopologyYaml(const std::string & yaml_path)
 
 void TopologyGlobalPlanner::publishConnectorDebugMarkers()
 {
-  if (!connector_debug_markers_pub_) return;
+  if (!connector_debug_markers_pub_)
+    return;
 
   visualization_msgs::msg::MarkerArray array;
   const auto stamp = clock_ ? clock_->now() : rclcpp::Time(0);
@@ -104,10 +111,13 @@ void TopologyGlobalPlanner::publishConnectorDebugMarkers()
   clear.action = visualization_msgs::msg::Marker::DELETEALL;
   array.markers.push_back(clear);
 
-  auto addArrow = [&](const Point2D & start, const Point2D & end,
-                      double offset_x, double offset_y,
-                      float r, float g, float b)
-  {
+  auto addArrow = [&](const Point2D & start,
+                    const Point2D & end,
+                    double offset_x,
+                    double offset_y,
+                    float r,
+                    float g,
+                    float b) {
     visualization_msgs::msg::Marker marker;
     marker.header.frame_id = global_frame_;
     marker.header.stamp = stamp;
@@ -141,7 +151,8 @@ void TopologyGlobalPlanner::publishConnectorDebugMarkers()
     const double dy = connector.portal_end.y - connector.portal_start.y;
     const double length = std::hypot(dx, dy);
 
-    if (length < 1e-6) continue;
+    if (length < 1e-6)
+      continue;
 
     if (connector.mode == "two_way") {
       addArrow(connector.portal_start, connector.portal_end, 0.0, 0.0, 0.0F, 1.0F, 0.0F);
@@ -154,7 +165,7 @@ void TopologyGlobalPlanner::publishConnectorDebugMarkers()
   connector_debug_markers_pub_->publish(array);
 }
 
-void TopologyGlobalPlanner::buildGraph()                      // 根据from to 转化成邻接图
+void TopologyGlobalPlanner::buildGraph() // 按允许的通行方向建立邻接表
 {
   graph_.clear();
   for (size_t i = 0; i < connectors_.size(); i++) {
@@ -166,48 +177,4 @@ void TopologyGlobalPlanner::buildGraph()                      // 根据from to �
   }
 }
 
-void TopologyGlobalPlanner::blockCmdCallback(const std_msgs::msg::Bool::SharedPtr msg)
-{
-  if (!msg || !msg->data || !is_on_connector_ || active_connector_id_.empty()) {
-    return;
-  }
-
-  const auto connector_it = std::find_if(
-    connectors_.begin(), connectors_.end(),
-    [this](const Connector & connector) {
-      return connector.id == active_connector_id_;
-    });
-
-  if (connector_it == connectors_.end()) {
-    RCLCPP_WARN(
-      logger_, "Cannot block active connector '%s': connector was not found",
-      active_connector_id_.c_str());
-    return;
-  }
-
-  if (connector_it->cost == blocked_connector_cost_) {
-    return;
-  }
-
-  connector_it->cost = blocked_connector_cost_;
-  buildGraph();
-
-  RCLCPP_WARN(
-    logger_, "Blocked connector '%s' with cost %.3f until a new goal is received",
-    connector_it->id.c_str(), connector_it->cost);
 }
-
-void TopologyGlobalPlanner::restoreAllConnectorCosts()
-{
-  for (auto & connector : connectors_) {
-    if (connector.cost == 1.0) {
-      continue;
-    }
-
-    connector.cost = 1.0;
-  }
-  buildGraph();
-}
-
-
-}  // namespace topology_global_planner

@@ -17,7 +17,7 @@ namespace topology_global_planner
 void TopologyGlobalPlanner::setYaw(geometry_msgs::msg::PoseStamped & pose, double yaw) const
 {
   tf2::Quaternion q;
-  q.setRPY(0.0, 0.0, yaw);                                    // 把rpy转成四元数
+  q.setRPY(0.0, 0.0, yaw);
   pose.pose.orientation.x = q.x();
   pose.pose.orientation.y = q.y();
   pose.pose.orientation.z = q.z();
@@ -26,74 +26,86 @@ void TopologyGlobalPlanner::setYaw(geometry_msgs::msg::PoseStamped & pose, doubl
 
 nav_msgs::msg::Path TopologyGlobalPlanner::makeInnerPlannerPath(
   const geometry_msgs::msg::PoseStamped & start,
-  const geometry_msgs::msg::PoseStamped & goal)
+  const geometry_msgs::msg::PoseStamped & goal,
+  grid::GoalPolicy goal_policy)
 {
-  if (!grid_planner_) {throw std::runtime_error("GridPlanner is not initialized");}
-  auto path = grid_planner_->plan(start, goal, cancel_checker_);
+  if (!grid_planner_) {
+    throw std::runtime_error("GridPlanner is not initialized");
+  }
+  auto path = grid_planner_->plan(start, goal, goal_policy, cancel_checker_);
 
   if (!path.poses.empty()) {
-    if (path.header.frame_id.empty()) {path.header.frame_id = global_frame_;}
-    if (clock_) {path.header.stamp = clock_->now();}
+    if (path.header.frame_id.empty()) {
+      path.header.frame_id = global_frame_;
+    }
+    if (clock_) {
+      path.header.stamp = clock_->now();
+    }
+  }
+  if (!path.poses.empty()) {
+    const auto end = path.poses.back().pose.position;
+    const double offset = std::hypot(end.x - goal.pose.position.x, end.y - goal.pose.position.y);
+    if (goal_policy == grid::GoalPolicy::EXACT && offset > 1e-6) {
+      throw std::runtime_error("GridPlanner did not reach the exact segment endpoint");
+    }
+    path.poses.insert(path.poses.begin(), start);
+    if (offset > 1e-6) {
+      RCLCPP_INFO(logger_,
+        "Final goal (%.3f, %.3f) uses reachable endpoint (%.3f, %.3f), offset=%.3fm",
+        goal.pose.position.x,
+        goal.pose.position.y,
+        end.x,
+        end.y,
+        offset);
+    }
+    // 保留容差内的可达终点
+    // 直接改回原目标可能落入障碍
+    path.poses.back().pose.orientation = goal.pose.orientation;
   }
   return path;
 }
 
-nav_msgs::msg::Path TopologyGlobalPlanner::fallbackDirectPlan(
-  const geometry_msgs::msg::PoseStamped & start,
-  const geometry_msgs::msg::PoseStamped & goal,
-  const std::string & reason)
-{
-  RCLCPP_WARN(logger_, "%s. %s", reason.c_str(),
-    fallback_to_inner_planner_ ? "Using direct inner planner." : "Fallback disabled; returning empty path.");
-
-  if (!fallback_to_inner_planner_) {
-    nav_msgs::msg::Path empty;
-    empty.header.frame_id = global_frame_;
-    empty.header.stamp = clock_ ? clock_->now() : rclcpp::Time(0);
-    return empty;
-  }
-
-  return makeInnerPlannerPath(start, goal);
-}
-
-
-// createPlan 前的输入 pose 标准化函数
+// 将输入位姿统一到规划坐标系
 geometry_msgs::msg::PoseStamped TopologyGlobalPlanner::normalizePoseFrame(
   const geometry_msgs::msg::PoseStamped & pose) const
 {
   geometry_msgs::msg::PoseStamped normalized = pose;
   if (normalized.header.frame_id.empty()) {
-    normalized.header.frame_id = global_frame_;                  // frame id空的话，补成global_frame_
+    normalized.header.frame_id = global_frame_;
   }
 
-  // Do not overwrite a meaningful timestamp. Nav2 usually supplies poses in the global
-  // frame already; preserving the stamp avoids asking TF for a transform at the wrong time.
+  // 已有时间戳保持不变
+  // 避免查询到错误时刻的坐标变换
   if (normalized.header.frame_id == global_frame_ || !tf_) {
     if (normalized.header.stamp.sec == 0 && normalized.header.stamp.nanosec == 0 && clock_) {
       normalized.header.stamp = clock_->now();
     }
-    return normalized;                                           // stamp 空的话，补成当前时间
+    return normalized;
   }
 
   try {
     geometry_msgs::msg::PoseStamped transformed;
-    tf_->transform(
-      normalized, transformed, global_frame_,
+    tf_->transform(normalized,
+      transformed,
+      global_frame_,
       tf2::durationFromSec(std::max(0.0, transform_tolerance_)));
     if (transformed.header.stamp.sec == 0 && transformed.header.stamp.nanosec == 0 && clock_) {
       transformed.header.stamp = clock_->now();
-    }                                                            // 把 normalized 这个 pose 从它自己 header 里的坐标系
-    return transformed;                                          // 转换到 global_frame_，并且最多等待 transform_tolerance_ 这么长时间来查 TF
+    }
+    return transformed;
   } catch (const std::exception & e) {
-    RCLCPP_WARN(
-      logger_, "Failed to transform pose from '%s' to '%s': %s. Using original pose.",
-      normalized.header.frame_id.c_str(), global_frame_.c_str(), e.what());
-    return normalized;
+    RCLCPP_WARN(logger_,
+      "Failed to transform pose from '%s' to '%s': %s. Planning aborted.",
+      normalized.header.frame_id.c_str(),
+      global_frame_.c_str(),
+      e.what());
+    throw;
   }
 }
 
-// 把小段路径拼成full_path
-void TopologyGlobalPlanner::appendSegment(nav_msgs::msg::Path & full_path, const nav_msgs::msg::Path & segment) const
+// 按执行顺序拼接完整路径
+void TopologyGlobalPlanner::appendSegment(
+  nav_msgs::msg::Path & full_path, const nav_msgs::msg::Path & segment) const
 {
   if (segment.poses.empty()) {
     return;
@@ -103,19 +115,8 @@ void TopologyGlobalPlanner::appendSegment(nav_msgs::msg::Path & full_path, const
     full_path.header = segment.header;
   }
 
-  size_t start_index = 0;
-  if (!full_path.poses.empty()) {                                   // fullpath非空, 拿fullpath的最后一个点，去和接进来的小段的第一个点作比较，如果很近，就认为是一个点
-    const auto & last = full_path.poses.back().pose.position;
-    const auto & first = segment.poses.front().pose.position;
-    if (euclidean(last.x, last.y, first.x, first.y) <= duplicate_pose_tolerance_) {
-      start_index = 1;                                              // 放弃第一个点，从下一个点开始拼
-    }
-  }
-
-  for (size_t i = start_index; i < segment.poses.size(); i++) {
-    full_path.poses.push_back(segment.poses[i]);                    // 把小段的点放进fullpath
-  }
+  // 保留分段交界处的两个位姿及各自朝向
+  full_path.poses.insert(full_path.poses.end(), segment.poses.begin(), segment.poses.end());
 }
 
-
-}  // namespace topology_global_planner
+}

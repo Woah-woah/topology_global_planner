@@ -97,7 +97,7 @@ connectors:
       start: {x: 10.467350006103516, y: -5.1340656280517578}
       end: {x: 12.129592895507812, y: -4.2688775062561035}
     cost: 1
-    action: step
+    action: down
 
   - id: C3
     from: R2
