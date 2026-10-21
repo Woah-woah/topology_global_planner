@@ -29,8 +29,8 @@ struct Segment
 
 struct TopologyPlan
 {
-  // 完整路径用于显示和碰撞检查
-  // 执行时按分段路径依次跟踪
+  // 控制器跟踪完整路径
+  // 分段数据用于进度管理和通道行为判断
   nav_msgs::msg::Path full_path = nav_msgs::msg::Path();
   std::vector<Segment> segments;
 };
