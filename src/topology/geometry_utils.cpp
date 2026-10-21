@@ -3,23 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <stdexcept>
-#include <utility>
-
-#include "tf2/LinearMath/Quaternion.h"
-#include "tf2/time.h"
-#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
-#include "yaml-cpp/yaml.h"
 
 namespace topology_global_planner
 {
-
-bool TopologyGlobalPlanner::hasRegion(const std::string & id) const
-{
-  return std::any_of(regions_.begin(), regions_.end(), [&](const Region & r) {
-    return r.id == id;
-  });
-}
 
 std::string TopologyGlobalPlanner::findRegion(double x, double y) const
 {
@@ -29,7 +15,7 @@ std::string TopologyGlobalPlanner::findRegion(double x, double y) const
   for (const auto & region : regions_) {
     if (pointInPolygon(x, y, region.polygon)) {
       inside_candidates.push_back(region.id);
-    } else if (pointOnPolygonBoundary(x, y, region.polygon)) {
+    } else if (pointOnPolygonBoundary(x, y, region.polygon, region_boundary_tolerance_)) {
       boundary_candidates.push_back(region.id);
     }
   }
@@ -59,7 +45,7 @@ std::string TopologyGlobalPlanner::findRegion(double x, double y) const
   double best_dist = std::numeric_limits<double>::infinity();
   std::string best_id;
   for (const auto & region : regions_) {
-    const double d = euclidean(x, y, region.centroid.x, region.centroid.y);
+    const double d = std::hypot(x - region.centroid.x, y - region.centroid.y);
     if (d < best_dist) {
       best_dist = d;
       best_id = region.id;
@@ -86,14 +72,12 @@ std::string TopologyGlobalPlanner::chooseBestRegionByCentroid(
   std::string best_id;
 
   for (const auto & id : candidates) {
-    const auto it = std::find_if(regions_.begin(), regions_.end(), [&](const Region & r) {
-      return r.id == id;
-    });
-    if (it == regions_.end()) {
+    const auto * region = getRegionById(id);
+    if (!region) {
       continue;
     }
 
-    const double d = euclidean(x, y, it->centroid.x, it->centroid.y);
+    const double d = std::hypot(x - region->centroid.x, y - region->centroid.y);
     if (d < best_dist) {
       best_dist = d;
       best_id = id;
@@ -125,12 +109,6 @@ bool TopologyGlobalPlanner::pointInPolygon(
 }
 
 bool TopologyGlobalPlanner::pointOnPolygonBoundary(
-  double x, double y, const std::vector<Point2D> & polygon) const
-{
-  return pointOnPolygonBoundary(x, y, polygon, region_boundary_tolerance_);
-}
-
-bool TopologyGlobalPlanner::pointOnPolygonBoundary(
   double x, double y, const std::vector<Point2D> & polygon, double tolerance) const
 {
   const Point2D p{x, y};
@@ -155,24 +133,19 @@ const Region * TopologyGlobalPlanner::getRegionById(const std::string & id) cons
   return &(*it);
 }
 
-bool TopologyGlobalPlanner::pointInRegionWithTolerance(
-  double x, double y, const std::string & region_id, double tolerance) const
-{
-  const auto * region = getRegionById(region_id);
-  if (region == nullptr) {
-    return false;
-  }
-
-  return pointInPolygon(x, y, region->polygon) ||
-         pointOnPolygonBoundary(x, y, region->polygon, tolerance);
-}
-
 bool TopologyGlobalPlanner::pathInsideRegionWithTolerance(
   const nav_msgs::msg::Path & path, const std::string & region_id, double tolerance) const
 {
   if (region_id.empty() || path.poses.empty()) {
     return false;
   }
+
+  // 采样过程中复用同一区域
+  const auto * region = getRegionById(region_id);
+  if (!region) {
+    return false;
+  }
+
   auto previous = path.poses.front().pose.position;
   for (const auto & pose : path.poses) {
     const auto & p = pose.pose.position;
@@ -182,7 +155,9 @@ bool TopologyGlobalPlanner::pathInsideRegionWithTolerance(
       const double f = static_cast<double>(i) / samples;
       const double x = previous.x + f * (p.x - previous.x);
       const double y = previous.y + f * (p.y - previous.y);
-      if (!pointInRegionWithTolerance(x, y, region_id, tolerance)) {
+      if (!pointInPolygon(x, y, region->polygon) &&
+          !pointOnPolygonBoundary(x, y, region->polygon, tolerance))
+      {
         return false;
       }
       // 区域重叠时也不允许普通路径穿过通道内部
@@ -243,7 +218,7 @@ bool TopologyGlobalPlanner::pathInsideConnectorStrip(const nav_msgs::msg::Path &
     const double proj_y = wait.y + clamped_t * vy;
 
     const double lateral_distance =
-      euclidean(pose.pose.position.x, pose.pose.position.y, proj_x, proj_y);
+      std::hypot(pose.pose.position.x - proj_x, pose.pose.position.y - proj_y);
 
     if (lateral_distance > half_width) {
       return false;
@@ -261,19 +236,19 @@ double TopologyGlobalPlanner::distancePointToSegment(
   const double wy = p.y - a.y;
   const double c1 = vx * wx + vy * wy;
   if (c1 <= 0.0) {
-    return euclidean(p.x, p.y, a.x, a.y);
+    return std::hypot(p.x - a.x, p.y - a.y);
   }
   const double c2 = vx * vx + vy * vy;
   if (c2 <= 1e-12) {
-    return euclidean(p.x, p.y, a.x, a.y);
+    return std::hypot(p.x - a.x, p.y - a.y);
   }
   if (c2 <= c1) {
-    return euclidean(p.x, p.y, b.x, b.y);
+    return std::hypot(p.x - b.x, p.y - b.y);
   }
   const double t = c1 / c2;
   const double proj_x = a.x + t * vx;
   const double proj_y = a.y + t * vy;
-  return euclidean(p.x, p.y, proj_x, proj_y);
+  return std::hypot(p.x - proj_x, p.y - proj_y);
 }
 
 Point2D TopologyGlobalPlanner::computeCentroid(const std::vector<Point2D> & polygon) const
@@ -291,9 +266,57 @@ Point2D TopologyGlobalPlanner::computeCentroid(const std::vector<Point2D> & poly
   return c;
 }
 
-double TopologyGlobalPlanner::euclidean(double x1, double y1, double x2, double y2) const
+bool TopologyGlobalPlanner::validateSmoothedPlan(
+  const TopologyPlan & reference, const TopologyPlan & candidate) const
 {
-  return std::hypot(x1 - x2, y1 - y2);
+  if (candidate.segments.size() != reference.segments.size() || candidate.segments.empty()) {
+    return false;
+  }
+  for (size_t i = 0; i < candidate.segments.size(); ++i) {
+    const auto & segment = candidate.segments[i];
+    const auto & original = reference.segments[i];
+    if (segment.path.poses.empty() || segment.type != original.type ||
+        segment.connector_id != original.connector_id || segment.action != original.action ||
+        segment.from_region != original.from_region || segment.to_region != original.to_region ||
+        segment.wait_pose != original.wait_pose || segment.exit_pose != original.exit_pose ||
+        segment.corridor_half_width != original.corridor_half_width)
+    {
+      return false;
+    }
+    if (!use_topology_) {
+      continue;
+    }
+    if (segment.type == SegmentType::CONNECTOR) {
+      const auto & wait = segment.wait_pose.pose.position;
+      const auto & exit = segment.exit_pose.pose.position;
+      const double length = std::hypot(exit.x - wait.x, exit.y - wait.y);
+      const Point2D begin{wait.x - (exit.x - wait.x) / length * connector_entry_clearance_,
+        wait.y - (exit.y - wait.y) / length * connector_entry_clearance_};
+      if (!pathInsideConnectorStrip(
+            segment.path, begin, {exit.x, exit.y}, segment.corridor_half_width))
+      {
+        return false;
+      }
+    } else {
+      // 按相邻通道确定区域
+      // 避免重叠区域的归属发生变化
+      std::string region;
+      if (i > 0 && reference.segments[i - 1].type == SegmentType::CONNECTOR) {
+        region = reference.segments[i - 1].to_region;
+      } else if (i + 1 < reference.segments.size() &&
+                 reference.segments[i + 1].type == SegmentType::CONNECTOR)
+      {
+        region = reference.segments[i + 1].from_region;
+      } else {
+        const auto & p = original.path.poses[original.path.poses.size() / 2].pose.position;
+        region = findRegion(p.x, p.y);
+      }
+      if (!pathInsideRegionWithTolerance(segment.path, region, region_constraint_tolerance_)) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 }

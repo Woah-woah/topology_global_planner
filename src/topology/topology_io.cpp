@@ -54,7 +54,7 @@ bool TopologyGlobalPlanner::loadTopologyYaml(const std::string & yaml_path)
         return false;
       }
 
-      if (!hasRegion(connector.from) || !hasRegion(connector.to)) {
+      if (!getRegionById(connector.from) || !getRegionById(connector.to)) {
         RCLCPP_ERROR(logger_,
           "Connector '%s' references unknown region: from='%s', to='%s'",
           connector.id.c_str(),

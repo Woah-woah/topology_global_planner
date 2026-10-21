@@ -176,13 +176,13 @@ std::vector<int> TopologyGlobalPlanner::optimizeConnectorsForRegionPath(
     return false;
   };
 
-  auto point_dist = [this](const Point2D & a, const Point2D & b) {
-    return euclidean(a.x, a.y, b.x, b.y);
+  auto point_dist = [](const Point2D & a, const Point2D & b) {
+    return std::hypot(a.x - b.x, a.y - b.y);
   };
 
-  auto pose_point_dist = [this](
+  auto pose_point_dist = [](
                            const geometry_msgs::msg::PoseStamped & pose, const Point2D & point) {
-    return euclidean(pose.pose.position.x, pose.pose.position.y, point.x, point.y);
+    return std::hypot(pose.pose.position.x - point.x, pose.pose.position.y - point.y);
   };
 
   const size_t layer_count = layers.size();

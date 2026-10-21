@@ -75,22 +75,21 @@ public:
       return false;
     });
 
+  // 复用当前拓扑配置复检平滑结果，不重新搜索或改变通道选择。
+  bool validateSmoothedPlan(const TopologyPlan & reference, const TopologyPlan & candidate) const;
+
 private:
   // 配置读取与区域查询
   bool loadTopologyYaml(const std::string & yaml_path);
   void buildGraph();
-  bool hasRegion(const std::string & id) const;
 
   std::string findRegion(double x, double y) const;
   std::string chooseBestRegionByCentroid(
     double x, double y, const std::vector<std::string> & candidates) const;
   bool pointInPolygon(double x, double y, const std::vector<Point2D> & polygon) const;
-  bool pointOnPolygonBoundary(double x, double y, const std::vector<Point2D> & polygon) const;
   bool pointOnPolygonBoundary(
     double x, double y, const std::vector<Point2D> & polygon, double tolerance) const;
   const Region * getRegionById(const std::string & id) const;
-  bool pointInRegionWithTolerance(
-    double x, double y, const std::string & region_id, double tolerance) const;
   bool pathInsideRegionWithTolerance(
     const nav_msgs::msg::Path & path, const std::string & region_id, double tolerance) const;
   bool pathInsideConnectorStrip(const nav_msgs::msg::Path & path,
@@ -130,7 +129,6 @@ private:
 
   void setYaw(geometry_msgs::msg::PoseStamped & pose, double yaw) const;
   void appendSegment(nav_msgs::msg::Path & full_path, const nav_msgs::msg::Path & segment) const;
-  double euclidean(double x1, double y1, double x2, double y2) const;
 
   struct DirectedEdge
   {
