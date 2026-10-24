@@ -47,10 +47,10 @@ namespace topology_global_planner
 
 void TopologyGlobalPlanner::initialize(rclcpp::Node::SharedPtr node,
   std::shared_ptr<tf2_ros::Buffer> tf,
-  map_server::Costmap2D * costmap,
+  map_server::MapView * costmap,
   std::string global_frame,
   std::string robot_base_frame,
-  std::string name)
+  std::string name, double clearance_radius)
 {
   if (!node || !tf || !costmap || global_frame.empty() || robot_base_frame.empty()) {
     throw std::invalid_argument("拓扑规划器初始化参数无效");
@@ -106,6 +106,7 @@ void TopologyGlobalPlanner::initialize(rclcpp::Node::SharedPtr node,
   }
 
   grid::GridPlanner::Options options;
+  options.clearance_radius = clearance_radius;
   node_->get_parameter(name_ + ".grid.tolerance", options.tolerance);
   node_->get_parameter(name_ + ".grid.use_astar", options.use_astar);
   node_->get_parameter(name_ + ".grid.allow_unknown", options.allow_unknown);

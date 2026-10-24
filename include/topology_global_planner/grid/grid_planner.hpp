@@ -7,7 +7,7 @@
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
-#include "map_server/costmap_2d.hpp"
+#include "map_server/map_view.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 namespace topology_global_planner::grid
@@ -33,13 +33,14 @@ public:
   struct Options
   {
     double tolerance{0.2};
+    double clearance_radius{0.0};
     bool use_astar{false};
     bool allow_unknown{false};
     bool use_final_approach_orientation{true};
     bool collect_diagnostics{false};
   };
 
-  GridPlanner(map_server::Costmap2D * costmap, const std::string & global_frame,
+  GridPlanner(map_server::MapView * costmap, const std::string & global_frame,
     rclcpp::Clock::SharedPtr clock, Options options);
   nav_msgs::msg::Path plan(const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal, GoalPolicy goal_policy,
@@ -47,7 +48,7 @@ public:
   const PlanningDiagnostics & lastDiagnostics() const {return diagnostics_;}
 
 private:
-  map_server::Costmap2D * costmap_;
+  map_server::MapView * costmap_;
   std::string global_frame_;
   rclcpp::Clock::SharedPtr clock_;
   Options options_;

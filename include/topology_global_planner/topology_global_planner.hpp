@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "map_server/costmap_2d.hpp"
+#include "map_server/map_view.hpp"
 #include "topology_global_planner/grid/grid_planner.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
@@ -62,10 +62,10 @@ public:
 
   void initialize(rclcpp::Node::SharedPtr node,
     std::shared_ptr<tf2_ros::Buffer> tf,
-    map_server::Costmap2D * costmap,
+    map_server::MapView * costmap,
     std::string global_frame,
     std::string robot_base_frame,
-    std::string name = "TopoPlanner");
+    std::string name = "TopoPlanner", double clearance_radius = 0.0);
 
   TopologyPlan plan(
     const geometry_msgs::msg::PoseStamped & start,
@@ -139,7 +139,7 @@ private:
 
   rclcpp::Node::SharedPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
-  map_server::Costmap2D * costmap_{nullptr};
+  map_server::MapView * costmap_{nullptr};
   rclcpp::Logger logger_{rclcpp::get_logger("TopologyGlobalPlanner")};
   rclcpp::Clock::SharedPtr clock_;
 

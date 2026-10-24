@@ -61,53 +61,54 @@ double rectangleDistanceSquared(Point a, Point b, double x, double y, double res
 class SnapshotGeometry
 {
 public:
-  explicit SnapshotGeometry(const map_server::Costmap2D & map)
-  : map_(map), field_(map.distanceField()), width(map.getSizeInCellsX()),
-    height(map.getSizeInCellsY()), resolution(map.getResolution()) {}
+  SnapshotGeometry(const map_server::MapView & map, double clearance)
+  : map_(map), field_(map.derivedMaps()), blocked_(map.clearanceMask(clearance + 2.0 * map.geometry().resolution)), width(map.geometry().width),
+    height(map.geometry().height), resolution(map.geometry().resolution) {}
 
   int cell(Point p) const
   {
     unsigned int x, y;
-    return map_.worldToMap(p.x, p.y, x, y) ? static_cast<int>(y * width + x) : -1;
+    return map_.worldToCell(p.x, p.y, x, y) ? static_cast<int>(y * width + x) : -1;
   }
   Point center(int i) const
   {
     Point p;
-    map_.mapToWorld(i % width, i / width, p.x, p.y);
+    const auto center = map_.geometry().center(i);
+    p.x = center.x(); p.y = center.y();
     return p;
   }
   bool pointAllowed(Point p) const
   {
     const int i = cell(p);
-    if (i < 0 || map_.getCost(i) >= map_server::INSCRIBED_INFLATED_OBSTACLE ||
-      field_->obstacles[i] >= map_server::LETHAL_OBSTACLE) {return false;}
-    const double r = field_->robot_radius;
-    return p.x - r >= map_.getOriginX() && p.y - r >= map_.getOriginY() &&
-      p.x + r < map_.getOriginX() + width * resolution &&
-      p.y + r < map_.getOriginY() + height * resolution;
+    if (i < 0 || blocked_.data[i] != 0 ||
+      field_->fused_obstacles.data[i] != 0) {return false;}
+    const double r = field_->robot_radius_m;
+    return p.x - r >= map_.geometry().origin_x && p.y - r >= map_.geometry().origin_y &&
+      p.x + r < map_.geometry().origin_x + width * resolution &&
+      p.y + r < map_.geometry().origin_y + height * resolution;
   }
   bool edgeAllowed(Point a, Point b) const
   {
     if (!pointAllowed(a) || !pointAllowed(b)) {return false;}
-    const double radius = field_->robot_radius;
+    const double radius = field_->robot_radius_m;
     const int x0 = std::max(0, static_cast<int>(std::floor(
-      (std::min(a.x, b.x) - radius - map_.getOriginX()) / resolution)));
+      (std::min(a.x, b.x) - radius - map_.geometry().origin_x) / resolution)));
     const int y0 = std::max(0, static_cast<int>(std::floor(
-      (std::min(a.y, b.y) - radius - map_.getOriginY()) / resolution)));
+      (std::min(a.y, b.y) - radius - map_.geometry().origin_y) / resolution)));
     const int x1 = std::min(width - 1, static_cast<int>(std::floor(
-      (std::max(a.x, b.x) + radius - map_.getOriginX()) / resolution)));
+      (std::max(a.x, b.x) + radius - map_.geometry().origin_x) / resolution)));
     const int y1 = std::min(height - 1, static_cast<int>(std::floor(
-      (std::max(a.y, b.y) + radius - map_.getOriginY()) / resolution)));
+      (std::max(a.y, b.y) + radius - map_.geometry().origin_y) / resolution)));
     for (int y = y0; y <= y1; ++y) {
       for (int x = x0; x <= x1; ++x) {
         const int i = y * width + x;
-        const auto raw = field_->obstacles[i];
-        if (raw < map_server::LETHAL_OBSTACLE &&
-          map_.getCost(i) < map_server::INSCRIBED_INFLATED_OBSTACLE) {continue;}
-        const double d2 = rectangleDistanceSquared(a, b, map_.getOriginX() + x * resolution,
-          map_.getOriginY() + y * resolution, resolution);
+        const auto raw = field_->fused_obstacles.data[i];
+        if (raw == 0 &&
+          blocked_.data[i] == 0) {continue;}
+        const double d2 = rectangleDistanceSquared(a, b, map_.geometry().origin_x + x * resolution,
+          map_.geometry().origin_y + y * resolution, resolution);
         // 车体半径只施加到未膨胀原始障碍；253 硬掩码只检查中心线。
-        if (d2 <= 1e-20 || (raw >= map_server::LETHAL_OBSTACLE && d2 <= radius * radius))
+        if (d2 <= 1e-20 || (raw != 0 && d2 <= radius * radius))
         {return false;}
       }
     }
@@ -125,8 +126,9 @@ public:
     }
     return true;
   }
-  const map_server::Costmap2D & map_;
-  std::shared_ptr<const map_server::DistanceField> field_;
+  const map_server::MapView & map_;
+  std::shared_ptr<const map_server::DerivedMaps> field_;
+  map_server::BinaryGrid blocked_;
   int width, height;
   double resolution;
 };
@@ -138,8 +140,8 @@ bool samplePotential(const SnapshotGeometry & geometry, const std::vector<float>
   Point point, FieldSample & result)
 {
   if (geometry.cell(point) < 0) {return false;}
-  const double ux = (point.x - geometry.map_.getOriginX()) / geometry.resolution - 0.5;
-  const double uy = (point.y - geometry.map_.getOriginY()) / geometry.resolution - 0.5;
+  const double ux = (point.x - geometry.map_.geometry().origin_x) / geometry.resolution - 0.5;
+  const double uy = (point.y - geometry.map_.geometry().origin_y) / geometry.resolution - 0.5;
   const double cx = std::clamp(ux, 0.0, static_cast<double>(geometry.width - 1));
   const double cy = std::clamp(uy, 0.0, static_cast<double>(geometry.height - 1));
   const int x0 = std::floor(cx), y0 = std::floor(cy);
@@ -241,7 +243,7 @@ nav_msgs::msg::Path extractGradient(const SnapshotGeometry & geometry,
 }
 }  // namespace
 
-GridPlanner::GridPlanner(map_server::Costmap2D * costmap, const std::string & global_frame,
+GridPlanner::GridPlanner(map_server::MapView * costmap, const std::string & global_frame,
   rclcpp::Clock::SharedPtr clock, Options options)
 : costmap_(costmap), global_frame_(global_frame), clock_(std::move(clock)), options_(options)
 {
@@ -267,13 +269,13 @@ nav_msgs::msg::Path GridPlanner::plan(const geometry_msgs::msg::PoseStamped & st
   check();
   if (start.header.frame_id != global_frame_ || goal.header.frame_id != global_frame_)
   {throw std::invalid_argument("栅格规划的起点或目标点坐标系与地图不一致");}
-  const map_server::Costmap2D map(*costmap_);
-  const auto field = map.distanceField();
-  if (!field || !field->matches(map)) {throw std::runtime_error("缺少与当前地图配套的浮点距离场");}
-  const SnapshotGeometry geometry(map);
+  const map_server::MapView map(*costmap_);
+  const auto field = map.derivedMaps();
+  if (!map.ready() || !field) {throw std::runtime_error("缺少与当前地图配套的浮点距离场");}
+  const SnapshotGeometry geometry(map, options_.clearance_radius);
   const int width = geometry.width, height = geometry.height;
   const size_t count = static_cast<size_t>(width) * height;
-  if (width < 3 || height < 3 || field->distances.size() != count || field->obstacles.size() != count)
+  if (width < 3 || height < 3 || field->distance_field.data.size() != count || field->fused_obstacles.data.size() != count)
   {throw std::runtime_error("当前地图快照的尺寸或距离场数据无效");}
   Point begin{start.pose.position.x, start.pose.position.y};
   Point end{goal.pose.position.x, goal.pose.position.y};
@@ -283,10 +285,11 @@ nav_msgs::msg::Path GridPlanner::plan(const geometry_msgs::msg::PoseStamped & st
   std::vector<uint8_t> walkable(count, 0), closed(count, 0);
   for (size_t i = 0; i < count; ++i) {
     if ((i & 1023) == 0) {check();}
-    const float d = field->distances[i];
+    const float d = field->distance_field.data[i];
     if (!std::isfinite(d) || d < 0) {throw std::runtime_error("距离场含无效或负数距离，拒绝用于搜索");}
-    costs[i] = 1 + 4 * map_server::distancePenalty(d, field->robot_radius,
-      field->inflation_radius, field->cost_scaling_factor).cost;
+    // 硬掩码与软代价独立；不可通行格不参与传播，仍提供有限的占位代价。
+    const float cost = field->costmap.data[i];
+    costs[i] = std::isfinite(cost) ? cost : 1.0f;
     const auto p = geometry.center(i);
     walkable[i] = geometry.pointAllowed(p) && geometry.edgeAllowed(p, p);
   }
@@ -376,8 +379,8 @@ nav_msgs::msg::Path GridPlanner::plan(const geometry_msgs::msg::PoseStamped & st
   const auto field_began = Clock::now();
   // 精确目标作为点源：以可见的周围栅格中心初始化局部边界，避免末端绕向格心。
   std::vector<std::pair<int, float>> boundary;
-  const int x0 = std::floor((end.x - map.getOriginX()) / geometry.resolution - 0.5);
-  const int y0 = std::floor((end.y - map.getOriginY()) / geometry.resolution - 0.5);
+  const int x0 = std::floor((end.x - map.geometry().origin_x) / geometry.resolution - 0.5);
+  const int y0 = std::floor((end.y - map.geometry().origin_y) / geometry.resolution - 0.5);
   for (int dy = 0; dy <= 1; ++dy) {
     for (int dx = 0; dx <= 1; ++dx) {
       const int x = x0 + dx, y = y0 + dy;

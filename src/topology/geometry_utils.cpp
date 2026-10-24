@@ -207,7 +207,7 @@ bool TopologyGlobalPlanner::pathInsideConnectorStrip(const nav_msgs::msg::Path &
     const double t = (px * vx + py * vy) / length_sq;
 
     // 限制沿通道方向的位置和回退量
-    const double cell_slack = std::max(0.05, costmap_->getResolution()) / std::sqrt(length_sq);
+    const double cell_slack = std::max(0.05, costmap_->geometry().resolution) / std::sqrt(length_sq);
     if (t < -cell_slack || t > 1.0 + cell_slack || t + cell_slack < previous_t) {
       return false;
     }
