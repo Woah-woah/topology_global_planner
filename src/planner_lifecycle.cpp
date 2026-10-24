@@ -53,7 +53,7 @@ void TopologyGlobalPlanner::initialize(rclcpp::Node::SharedPtr node,
   std::string name)
 {
   if (!node || !tf || !costmap || global_frame.empty() || robot_base_frame.empty()) {
-    throw std::invalid_argument("TopologyGlobalPlanner: invalid initialization arguments");
+    throw std::invalid_argument("拓扑规划器初始化参数无效");
   }
 
   node_ = std::move(node);
@@ -86,7 +86,7 @@ void TopologyGlobalPlanner::initialize(rclcpp::Node::SharedPtr node,
   // 栅格规划参数
   declare("grid.tolerance", rclcpp::ParameterValue(0.2));
   declare("grid.use_astar", rclcpp::ParameterValue(false));
-  declare("grid.allow_unknown", rclcpp::ParameterValue(true));
+  declare("grid.allow_unknown", rclcpp::ParameterValue(false));
   declare("grid.use_final_approach_orientation", rclcpp::ParameterValue(true));
 
   node_->get_parameter(name_ + ".topology_yaml", topology_yaml_);
@@ -102,7 +102,7 @@ void TopologyGlobalPlanner::initialize(rclcpp::Node::SharedPtr node,
       !std::isfinite(connector_path_half_width_) || connector_path_half_width_ <= 0.0 ||
       !std::isfinite(region_constraint_tolerance_) || region_constraint_tolerance_ < 0.0)
   {
-    throw std::invalid_argument("Invalid topology corridor width or region tolerance");
+    throw std::invalid_argument("拓扑通道宽度或区域容差无效");
   }
 
   grid::GridPlanner::Options options;
@@ -113,7 +113,8 @@ void TopologyGlobalPlanner::initialize(rclcpp::Node::SharedPtr node,
     name_ + ".grid.use_final_approach_orientation", options.use_final_approach_orientation);
 
   grid_planner_ = std::make_unique<grid::GridPlanner>(costmap_, global_frame_, clock_, options);
-  RCLCPP_INFO(logger_, "Standalone GridPlanner initialized");
+  RCLCPP_INFO(logger_, "栅格规划器：搜索方式=%s，路径提取=连续势场梯度，势场传播=快速行进法",
+    options.use_astar ? "A*" : "Dijkstra");
 
   connector_debug_markers_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
     "TopoPlanner/connector_debug_markers", rclcpp::QoS(1).transient_local().reliable());
@@ -128,7 +129,7 @@ void TopologyGlobalPlanner::initialize(rclcpp::Node::SharedPtr node,
     if (topology_yaml_.empty() || !loadTopologyYaml(topology_yaml_) || regions_.empty() ||
         connectors_.empty())
     {
-      throw std::runtime_error("Topology is enabled but its configuration is invalid");
+      throw std::runtime_error("已启用拓扑规划，但拓扑配置无效");
     }
     buildGraph();
     publishConnectorDebugMarkers();
@@ -162,7 +163,7 @@ void TopologyGlobalPlanner::publishCurrentRegion()
     msg.data = regionIdToUInt8(region);
 
   } catch (const std::exception & e) {
-    RCLCPP_WARN_THROTTLE(logger_, *clock_, 2000, "Failed to get robot pose: %s", e.what());
+    RCLCPP_WARN_THROTTLE(logger_, *clock_, 2000, "无法取得机器人当前位置：%s", e.what());
   }
 
   current_region_pub_->publish(msg);
@@ -174,7 +175,7 @@ TopologyPlan TopologyGlobalPlanner::plan(const geometry_msgs::msg::PoseStamped &
   std::function<bool()> cancel_checker)
 {
   if (!grid_planner_) {
-    throw std::runtime_error("GridPlanner is not initialized");
+    throw std::runtime_error("栅格规划器尚未初始化");
   }
 
   cancel_checker_ = cancel_checker ? std::move(cancel_checker) : []() {
@@ -195,14 +196,14 @@ TopologyPlan TopologyGlobalPlanner::plan(const geometry_msgs::msg::PoseStamped &
       return c.id == active.connector_id;
     });
     if (it == connectors_.end() || active.type != SegmentType::CONNECTOR) {
-      throw std::runtime_error("Unknown committed connector");
+      throw std::runtime_error("当前锁定的通道不存在");
     }
 
     const bool forward = it->from == active.from_region && it->to == active.to_region;
     const bool reverse =
       it->mode == "two_way" && it->to == active.from_region && it->from == active.to_region;
     if (!forward && !reverse) {
-      throw std::runtime_error("Invalid committed connector direction");
+      throw std::runtime_error("当前锁定通道的通行方向无效");
     }
 
     const auto & wait = forward ? it->portal_start : it->portal_end;
@@ -235,12 +236,12 @@ TopologyPlan TopologyGlobalPlanner::plan(const geometry_msgs::msg::PoseStamped &
 
   const auto goal_region = findRegion(goal_global.pose.position.x, goal_global.pose.position.y);
   if (start_region.empty() || goal_region.empty()) {
-    throw std::runtime_error("Start or goal is outside topology regions");
+    throw std::runtime_error("起点或目标点不在任何拓扑区域内");
   }
 
   const auto topology = searchTopology(start_region, goal_region, route_start, goal_global);
   if (!topology.success) {
-    throw std::runtime_error("No directed topology route");
+    throw std::runtime_error("按允许的通行方向找不到拓扑路线");
   }
 
   auto suffix = makePortalOptimizedTopologyPath(route_start, goal_global, topology);

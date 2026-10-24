@@ -27,12 +27,12 @@ void TopologyGlobalPlanner::setYaw(geometry_msgs::msg::PoseStamped & pose, doubl
 nav_msgs::msg::Path TopologyGlobalPlanner::makeInnerPlannerPath(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal,
-  grid::GoalPolicy goal_policy)
+  grid::GoalPolicy goal_policy, grid::GridPlanner::PathValidator topology_valid)
 {
   if (!grid_planner_) {
     throw std::runtime_error("GridPlanner is not initialized");
   }
-  auto path = grid_planner_->plan(start, goal, goal_policy, cancel_checker_);
+  auto path = grid_planner_->plan(start, goal, goal_policy, cancel_checker_, std::move(topology_valid));
 
   if (!path.poses.empty()) {
     if (path.header.frame_id.empty()) {
@@ -48,7 +48,10 @@ nav_msgs::msg::Path TopologyGlobalPlanner::makeInnerPlannerPath(
     if (goal_policy == grid::GoalPolicy::EXACT && offset > 1e-6) {
       throw std::runtime_error("GridPlanner did not reach the exact segment endpoint");
     }
-    path.poses.insert(path.poses.begin(), start);
+    // GridPlanner 已保留精确起点，避免重复插入制造零长度边。
+    if (path.poses.front().pose.position != start.pose.position) {
+      path.poses.insert(path.poses.begin(), start);
+    }
     if (offset > 1e-6) {
       RCLCPP_INFO(logger_,
         "Final goal (%.3f, %.3f) uses reachable endpoint (%.3f, %.3f), offset=%.3fm",

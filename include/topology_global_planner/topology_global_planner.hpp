@@ -115,7 +115,7 @@ private:
 
   nav_msgs::msg::Path makeInnerPlannerPath(const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal,
-    grid::GoalPolicy goal_policy);
+    grid::GoalPolicy goal_policy, grid::GridPlanner::PathValidator topology_valid = {});
 
   nav_msgs::msg::Path makeConnectorPath(
     const geometry_msgs::msg::PoseStamped & start, const Segment & segment);

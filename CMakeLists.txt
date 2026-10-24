@@ -6,6 +6,11 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# EDT 与浮点搜索用于实时导航，未指定构建类型时启用优化。
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(map_server REQUIRED)
@@ -30,7 +35,7 @@ add_library(${TOPO_LIB_NAME} SHARED
   src/topology/portal_optimizer.cpp
   src/topology/geometry_utils.cpp
   # 栅格规划
-  src/grid/navfn.cpp
+  src/grid/eikonal_field.cpp
   src/grid/grid_planner.cpp
 )
 
