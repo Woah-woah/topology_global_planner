@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,15 @@
 
 namespace topology_global_planner::grid
 {
+// 起点净空不足与普通规划失败分开传递；保留原有严格净空判定。
+class StartBlocked : public std::runtime_error
+{
+public:
+  explicit StartBlocked(const geometry_msgs::msg::PoseStamped & pose)
+  : std::runtime_error("规划起点被占用，或起点周围没有足够空间容纳车体"), start(pose) {}
+  geometry_msgs::msg::PoseStamped start;
+};
+
 enum class GoalPolicy {EXACT, WITHIN_TOLERANCE};
 
 struct PlanningDiagnostics

@@ -294,7 +294,7 @@ nav_msgs::msg::Path GridPlanner::plan(const geometry_msgs::msg::PoseStamped & st
     walkable[i] = geometry.pointAllowed(p) && geometry.edgeAllowed(p, p);
   }
   if (!walkable[source] || !geometry.edgeAllowed(begin, geometry.center(source)))
-  {throw std::runtime_error("规划起点被占用，或起点周围没有足够空间容纳车体");}
+  {throw StartBlocked(start);}
   const double tolerance = policy == GoalPolicy::EXACT ? 0 : options_.tolerance;
   if (tolerance == 0 && (!walkable[target] || !geometry.edgeAllowed(geometry.center(target), end)))
   {throw std::runtime_error("精确目标点被占用，或目标周围没有足够空间容纳车体");}
