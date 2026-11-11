@@ -62,7 +62,7 @@ class SnapshotGeometry
 {
 public:
   SnapshotGeometry(const map_server::MapView & map, double clearance)
-  : map_(map), field_(map.derivedMaps()), blocked_(map.clearanceMask(clearance + 2.0 * map.geometry().resolution)), width(map.geometry().width),
+  : map_(map), field_(map.derivedMaps()), blocked_(map.clearanceMask(clearance + std::sqrt(0.5) * map.geometry().resolution)), width(map.geometry().width),
     height(map.geometry().height), resolution(map.geometry().resolution) {}
 
   int cell(Point p) const
@@ -404,9 +404,19 @@ nav_msgs::msg::Path GridPlanner::plan(const geometry_msgs::msg::PoseStamped & st
   std::string failure;
   auto continuous = extractGradient(geometry, navigation.values, begin, end, header,
     check, failure, diagnostics_.projected_steps);
-  if (!continuous.poses.empty() && !valid(continuous)) {
-    failure = "连续势场路径未通过碰撞检查或区域/通道约束检查";
-    continuous.poses.clear();
+  if (!continuous.poses.empty()) {
+      const bool collision_ok = geometry.pathAllowed(continuous, check);
+
+      const bool topology_ok =
+          collision_ok && (!topology_valid || topology_valid(continuous));
+
+      if (!collision_ok) {
+          failure = "FMM路径碰撞检测失败";
+          continuous.poses.clear();
+      } else if (!topology_ok) {
+          failure = "FMM路径拓扑约束检查失败";
+          continuous.poses.clear();
+      }
   }
   diagnostics_.extraction_ms = ms(trace_began);
   if (options_.collect_diagnostics) {
